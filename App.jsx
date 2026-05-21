@@ -889,7 +889,72 @@ function shuffleArr(arr) {
   return a;
 }
 
+// ---- Flashcard decks for the concept areas (front / back / sub / key) ----
+const CONLAW_DECK = [
+  ...AMENDMENTS.map(a => ({ key: `amend:${a.num}`, front: `${a.num} Amendment`, sub: a.short, back: `${a.detail}\n\nIncorporation: ${a.incorp}` })),
+  ...CONLAW_CONCEPTS.map(c => ({ key: `conlaw:${c.id}`, front: c.title, sub: 'Constitutional doctrine', back: `${c.body}\n\n• ${c.points.join('\n• ')}` })),
+];
+const INSANITY_DECK = [
+  ...INSANITY_TESTS.map(t => ({ key: `itest:${t.id}`, front: t.name, sub: `${t.year} · ${t.tag}`, back: `${t.rule}\n\nOrigin: ${t.origin}\nCriticism: ${t.criticism}` })),
+  ...IDRA_PROVISIONS.map((p, i) => ({ key: `idra:${i}`, front: p.h, sub: 'IDRA 1984', back: p.t })),
+];
+const BASICLAW_DECK = BASIC_LAW.map(c => ({ key: `basic:${c.id}`, front: c.title, sub: c.cat, back: `${c.body}\n\n• ${c.points.join('\n• ')}` }));
+
+// ---- Per-domain MCQ generators ----
+function generateConLawQuestions(buried = {}) {
+  const qs = [];
+  for (const a of AMENDMENTS) {
+    if (buried['amend:' + a.num]) continue;
+    const d = pickDistractors(AMENDMENTS, a, x => x.short, 3).map(x => x.short);
+    const { options, correct } = makeOptions(a.short, d);
+    qs.push({ q: `What does the ${a.num} Amendment chiefly protect?`, options, correct, explanation: `${a.num} Amendment: ${a.detail}` });
+    const d2 = pickDistractors(AMENDMENTS, a, x => `${x.num} Amendment`, 3).map(x => `${x.num} Amendment`);
+    const { options: o2, correct: c2 } = makeOptions(`${a.num} Amendment`, d2);
+    qs.push({ q: `Which amendment is described here?\n\n"${a.short}"`, options: o2, correct: c2, explanation: `${a.num} Amendment — ${a.incorp}` });
+  }
+  for (const c of CONLAW_CONCEPTS) {
+    if (buried['conlaw:' + c.id]) continue;
+    const d = pickDistractors(CONLAW_CONCEPTS, c, x => x.title, 3).map(x => x.title);
+    const { options, correct } = makeOptions(c.title, d);
+    qs.push({ q: `Which constitutional doctrine does this describe?\n\n"${c.body}"`, options, correct, explanation: `${c.title}: ${c.points[0]}` });
+  }
+  return qs;
+}
+function generateInsanityQuestions(buried = {}) {
+  const qs = [];
+  for (const t of INSANITY_TESTS) {
+    if (buried['itest:' + t.id]) continue;
+    const d = pickDistractors(INSANITY_TESTS, t, x => x.name, 3).map(x => x.name);
+    const { options, correct } = makeOptions(t.name, d);
+    qs.push({ q: `Which insanity standard does this describe?\n\n"${t.rule}"`, options, correct, explanation: `${t.name} (${t.year}) — ${t.focus}` });
+    const d2 = pickDistractors(INSANITY_TESTS, t, x => x.tag, 3).map(x => x.tag);
+    if (new Set([t.tag, ...d2]).size === 4) {
+      const { options: o2, correct: c2 } = makeOptions(t.tag, d2);
+      qs.push({ q: `The ${t.name} (${t.year}) test is best classified as which type?`, options: o2, correct: c2, explanation: `${t.name}: ${t.focus}` });
+    }
+  }
+  for (let i = 0; i < IDRA_PROVISIONS.length; i++) {
+    if (buried['idra:' + i]) continue;
+    const p = IDRA_PROVISIONS[i];
+    const d = pickDistractors(IDRA_PROVISIONS, p, x => x.h, 3).map(x => x.h);
+    const { options, correct } = makeOptions(p.h, d);
+    qs.push({ q: `Which IDRA (1984) reform does this describe?\n\n"${p.t}"`, options, correct, explanation: `${p.h}: ${p.t}` });
+  }
+  return qs;
+}
+function generateBasicLawQuestions(buried = {}) {
+  const qs = [];
+  for (const c of BASIC_LAW) {
+    if (buried['basic:' + c.id]) continue;
+    const d = pickDistractors(BASIC_LAW, c, x => x.title, 3).map(x => x.title);
+    const { options, correct } = makeOptions(c.title, d);
+    qs.push({ q: `Which concept does this describe?\n\n"${c.body}"`, options, correct, explanation: `${c.title}: ${c.points[0]}` });
+  }
+  return qs;
+}
+
 const CATEGORIES = [...new Set(CASES.map(c => c.category))];
+
 
 // =====================================================================
 // MAIN COMPONENT
@@ -897,10 +962,12 @@ const CATEGORIES = [...new Set(CASES.map(c => c.category))];
 export default function App() {
   const [mode, setMode] = useState('oral');
   const [progress, setProgress] = useState({});
+  const [buried, setBuried] = useState({});
 
   useEffect(() => {
     (async () => {
       try { const result = await window.storage?.get('forensic_progress'); if (result?.value) setProgress(JSON.parse(result.value)); } catch (e) {}
+      try { const b = await window.storage?.get('forensic_buried'); if (b?.value) setBuried(JSON.parse(b.value)); } catch (e) {}
     })();
   }, []);
 
@@ -908,11 +975,17 @@ export default function App() {
     setProgress(newProgress);
     try { await window.storage?.set('forensic_progress', JSON.stringify(newProgress)); } catch (e) {}
   };
+  const saveBuried = async (nb) => {
+    setBuried(nb);
+    try { await window.storage?.set('forensic_buried', JSON.stringify(nb)); } catch (e) {}
+  };
   const markCase = (id, status) => saveProgress({ ...progress, [id]: status });
   const resetProgress = async () => saveProgress({});
+  const toggleBury = (key) => { const nb = { ...buried }; if (nb[key]) delete nb[key]; else nb[key] = true; saveBuried(nb); };
+  const unburyAll = () => saveBuried({});
 
   return (
-    <div style={{ fontFamily: "'Fraunces', 'Source Serif Pro', Georgia, serif", minHeight: '100vh', background: 'linear-gradient(180deg, #f4ede0 0%, #ede4d3 100%)', color: '#1a1612' }}>
+    <div style={{ fontFamily: "'Fraunces', 'Source Serif Pro', Georgia, serif", minHeight: '100vh', background: 'linear-gradient(180deg, #fcfbf8 0%, #f4f1ea 100%)', color: '#232a31' }}>
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,300..900&family=Source+Serif+Pro:wght@400;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
         * { box-sizing: border-box; }
@@ -921,10 +994,10 @@ export default function App() {
       `}</style>
 
       <div style={{ maxWidth: 1100, margin: '0 auto', padding: '32px 24px' }}>
-        <header style={{ borderBottom: '2px solid #1a3a5c', paddingBottom: 20, marginBottom: 28, display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', flexWrap: 'wrap', gap: 12 }}>
+        <header style={{ borderBottom: '2px solid #2b3742', paddingBottom: 20, marginBottom: 28, display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', flexWrap: 'wrap', gap: 12 }}>
           <div>
-            <div style={{ fontSize: 11, letterSpacing: '0.25em', textTransform: 'uppercase', color: '#8b6f3c', marginBottom: 4 }}>UH / CWRU · Forensic Psychiatry</div>
-            <h1 style={{ fontFamily: "'Fraunces', serif", fontSize: 38, fontWeight: 600, fontStyle: 'italic', margin: 0, color: '#1a3a5c', letterSpacing: '-0.02em' }}>Landmark Final Exam <span style={{ fontStyle: 'normal', fontWeight: 400 }}>—</span> Study Guide</h1>
+            <div style={{ fontSize: 11, letterSpacing: '0.25em', textTransform: 'uppercase', color: '#7c2d2d', marginBottom: 4 }}>UH / CWRU · Forensic Psychiatry</div>
+            <h1 style={{ fontFamily: "'Fraunces', serif", fontSize: 38, fontWeight: 600, fontStyle: 'italic', margin: 0, color: '#2b3742', letterSpacing: '-0.02em' }}>Landmark Final Exam <span style={{ fontStyle: 'normal', fontWeight: 400 }}>—</span> Study Guide</h1>
           </div>
           <ProgressBadge progress={progress} total={CASES.length} />
         </header>
@@ -932,19 +1005,19 @@ export default function App() {
         <ModeTabs mode={mode} setMode={setMode} />
 
         <main style={{ marginTop: 24 }}>
-          {mode === 'oral' && <OralExamMode progress={progress} markCase={markCase} />}
-          {mode === 'browse' && <BrowseMode progress={progress} />}
-          {mode === 'conlaw' && <ConLawMode />}
-          {mode === 'insanity' && <InsanityMode />}
-          {mode === 'basiclaw' && <BasicLawMode />}
+          {mode === 'oral' && <OralExamMode progress={progress} markCase={markCase} buried={buried} toggleBury={toggleBury} />}
+          {mode === 'browse' && <BrowseMode progress={progress} buried={buried} toggleBury={toggleBury} />}
+          {mode === 'conlaw' && <ConLawMode buried={buried} toggleBury={toggleBury} />}
+          {mode === 'insanity' && <InsanityMode buried={buried} toggleBury={toggleBury} />}
+          {mode === 'basiclaw' && <BasicLawMode buried={buried} toggleBury={toggleBury} />}
           {mode === 'terms' && <TermsMode />}
-          {mode === 'flashcards' && <FlashcardsMode progress={progress} markCase={markCase} />}
-          {mode === 'quiz' && <QuizMode />}
-          {mode === 'progress' && <ProgressMode progress={progress} resetProgress={resetProgress} />}
+          {mode === 'flashcards' && <FlashcardsMode progress={progress} markCase={markCase} buried={buried} toggleBury={toggleBury} />}
+          {mode === 'quiz' && <QuizMode buried={buried} />}
+          {mode === 'progress' && <ProgressMode progress={progress} resetProgress={resetProgress} buried={buried} toggleBury={toggleBury} unburyAll={unburyAll} />}
           {mode === 'countdown' && <CountdownMode />}
         </main>
 
-        <footer style={{ marginTop: 48, paddingTop: 20, borderTop: '1px solid #d4c5a8', textAlign: 'center', fontSize: 12, color: '#6b5d4a', letterSpacing: '0.05em' }}>
+        <footer style={{ marginTop: 48, paddingTop: 20, borderTop: '1px solid #dcd6c8', textAlign: 'center', fontSize: 12, color: '#6e6757', letterSpacing: '0.05em' }}>
           {CASES.length} landmark cases · {TERMS.length} legal terms · {INSANITY_TESTS.length} insanity standards · {BASIC_LAW.length} basic-law concepts · exam June 8, 2026
         </footer>
       </div>
@@ -960,9 +1033,9 @@ function ProgressBadge({ progress, total }) {
   const reviewing = Object.values(progress).filter(v => v === 'reviewing').length;
   return (
     <div style={{ display: 'flex', gap: 14, fontFamily: "'JetBrains Mono', monospace", fontSize: 12 }}>
-      <Stat label="Mastered" value={mastered} color="#3d6b3a" />
-      <Stat label="Reviewing" value={reviewing} color="#a06530" />
-      <Stat label="Cases" value={total} color="#1a3a5c" />
+      <Stat label="Mastered" value={mastered} color="#34602f" />
+      <Stat label="Reviewing" value={reviewing} color="#8a5a1c" />
+      <Stat label="Cases" value={total} color="#2b3742" />
     </div>
   );
 }
@@ -970,7 +1043,7 @@ function Stat({ label, value, color }) {
   return (
     <div style={{ textAlign: 'center' }}>
       <div style={{ fontSize: 22, fontWeight: 700, color, lineHeight: 1 }}>{value}</div>
-      <div style={{ fontSize: 9, letterSpacing: '0.15em', textTransform: 'uppercase', color: '#6b5d4a', marginTop: 4 }}>{label}</div>
+      <div style={{ fontSize: 9, letterSpacing: '0.15em', textTransform: 'uppercase', color: '#6e6757', marginTop: 4 }}>{label}</div>
     </div>
   );
 }
@@ -992,14 +1065,14 @@ function ModeTabs({ mode, setMode }) {
     { id: 'countdown', label: 'Countdown', icon: CalendarClock },
   ];
   return (
-    <nav style={{ display: 'flex', gap: 4, flexWrap: 'wrap', borderBottom: '1px solid #d4c5a8' }}>
+    <nav style={{ display: 'flex', gap: 4, flexWrap: 'wrap', borderBottom: '1px solid #dcd6c8' }}>
       {tabs.map(t => {
         const Icon = t.icon; const active = mode === t.id;
         return (
           <button key={t.id} onClick={() => setMode(t.id)}
             style={{ background: 'none', border: 'none', padding: '12px 16px',
-              borderBottom: active ? '3px solid #1a3a5c' : '3px solid transparent',
-              color: active ? '#1a3a5c' : '#6b5d4a', fontFamily: "'Fraunces', serif",
+              borderBottom: active ? '3px solid #2b3742' : '3px solid transparent',
+              color: active ? '#2b3742' : '#6e6757', fontFamily: "'Fraunces', serif",
               fontSize: 14.5, fontWeight: active ? 600 : 400, fontStyle: active ? 'italic' : 'normal',
               display: 'inline-flex', alignItems: 'center', gap: 7, transition: 'all 0.2s', marginBottom: -1 }}>
             <Icon size={15} strokeWidth={1.5} /> {t.label}
@@ -1013,7 +1086,7 @@ function ModeTabs({ mode, setMode }) {
 // =====================================================================
 // ORAL EXAM SIMULATOR  (Examiner Drill + Category Map)
 // =====================================================================
-function OralExamMode({ progress, markCase }) {
+function OralExamMode({ progress, markCase, buried, toggleBury }) {
   const [view, setView] = useState('drill'); // 'drill' | 'map'
   const [filter, setFilter] = useState('all');
   const [chronological, setChronological] = useState(false);
@@ -1023,7 +1096,7 @@ function OralExamMode({ progress, markCase }) {
   const [revealed, setRevealed] = useState(blank);
 
   const pool = useMemo(() => {
-    let list = CASES;
+    let list = CASES.filter(c => !buried['case:' + c.id]);
     if (filter === 'review') list = list.filter(c => progress[c.id] !== 'mastered');
     if (filter === 'unseen') list = list.filter(c => !progress[c.id]);
     if (CATEGORIES.includes(filter)) list = list.filter(c => c.category === filter);
@@ -1032,7 +1105,7 @@ function OralExamMode({ progress, markCase }) {
     let seed = shuffleSeed;
     for (let i = arr.length - 1; i > 0; i--) { seed = (seed * 9301 + 49297) % 233280; const j = Math.floor((seed / 233280) * (i + 1)); [arr[i], arr[j]] = [arr[j], arr[i]]; }
     return arr;
-  }, [filter, shuffleSeed, progress, chronological]);
+  }, [filter, shuffleSeed, progress, chronological, buried]);
 
   // ---------- Category Map view ----------
   if (view === 'map') {
@@ -1040,7 +1113,7 @@ function OralExamMode({ progress, markCase }) {
     return (
       <div>
         <ViewToggle view={view} setView={setView} />
-        <p style={{ fontSize: 13, color: '#6b5d4a', fontStyle: 'italic', margin: '6px 0 18px 0', lineHeight: 1.6 }}>
+        <p style={{ fontSize: 13, color: '#6e6757', fontStyle: 'italic', margin: '6px 0 18px 0', lineHeight: 1.6 }}>
           Study the shape of each topic: every category with its cases laid out chronologically. Examiners often walk you forward through a line of cases — see how each one builds on the last.
         </p>
         <select value={filter} onChange={(e) => setFilter(e.target.value)}
@@ -1049,20 +1122,21 @@ function OralExamMode({ progress, markCase }) {
           {CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
         </select>
         {catList.map(cat => {
-          const list = CASES.filter(c => c.category === cat).sort((a, b) => a.year - b.year);
+          const list = CASES.filter(c => c.category === cat && !buried['case:' + c.id]).sort((a, b) => a.year - b.year);
+          if (list.length === 0) return null;
           return (
             <section key={cat} style={{ marginBottom: 26 }}>
-              <h3 style={{ fontFamily: "'Fraunces', serif", fontSize: 20, fontStyle: 'italic', fontWeight: 500, color: '#1a3a5c', margin: '0 0 12px 0', borderBottom: '1px solid #d4c5a8', paddingBottom: 6 }}>
-                {cat} <span style={{ fontSize: 12, fontStyle: 'normal', color: '#8b6f3c' }}>· {list.length} cases</span>
+              <h3 style={{ fontFamily: "'Fraunces', serif", fontSize: 20, fontStyle: 'italic', fontWeight: 500, color: '#2b3742', margin: '0 0 12px 0', borderBottom: '1px solid #dcd6c8', paddingBottom: 6 }}>
+                {cat} <span style={{ fontSize: 12, fontStyle: 'normal', color: '#7c2d2d' }}>· {list.length} cases</span>
               </h3>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 0, position: 'relative', paddingLeft: 18 }}>
-                <div style={{ position: 'absolute', left: 4, top: 8, bottom: 8, width: 2, background: '#d4c5a8' }} />
+                <div style={{ position: 'absolute', left: 4, top: 8, bottom: 8, width: 2, background: '#dcd6c8' }} />
                 {list.map(c => (
                   <div key={c.id} style={{ display: 'flex', alignItems: 'baseline', gap: 12, padding: '7px 0', position: 'relative' }}>
-                    <div style={{ position: 'absolute', left: -18, top: 12, width: 9, height: 9, borderRadius: '50%', background: '#1a3a5c', border: '2px solid #f4ede0' }} />
-                    <span style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 13, color: '#8b6f3c', fontWeight: 500, minWidth: 42 }}>{c.year}</span>
-                    <span style={{ fontFamily: "'Fraunces', serif", fontSize: 16, fontStyle: 'italic', color: '#1a3a5c' }}>{c.name}</span>
-                    <span style={{ fontSize: 12, color: '#6b5d4a' }}>· {c.court}</span>
+                    <div style={{ position: 'absolute', left: -18, top: 12, width: 9, height: 9, borderRadius: '50%', background: '#2b3742', border: '2px solid #fcfbf8' }} />
+                    <span style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 13, color: '#7c2d2d', fontWeight: 500, minWidth: 42 }}>{c.year}</span>
+                    <span style={{ fontFamily: "'Fraunces', serif", fontSize: 16, fontStyle: 'italic', color: '#2b3742' }}>{c.name}</span>
+                    <span style={{ fontSize: 12, color: '#6e6757' }}>· {c.court}</span>
                   </div>
                 ))}
               </div>
@@ -1091,23 +1165,23 @@ function OralExamMode({ progress, markCase }) {
           <option value="review">Needs Review</option>
           <optgroup label="By Category">{CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}</optgroup>
         </select>
-        <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 13, color: '#1a3a5c', cursor: 'pointer' }}>
+        <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 13, color: '#2b3742', cursor: 'pointer' }}>
           <input type="checkbox" checked={chronological} onChange={(e) => { setChronological(e.target.checked); setIdx(0); reset(); }} />
           Chronological order
         </label>
         {!chronological && (
           <button onClick={() => { setShuffleSeed(Math.random() * 10000); setIdx(0); reset(); }} style={btnSecondary}><Shuffle size={14} /> Shuffle</button>
         )}
-        <div style={{ marginLeft: 'auto', fontFamily: "'JetBrains Mono', monospace", fontSize: 12, color: '#6b5d4a' }}>{idx + 1} / {pool.length}</div>
+        <div style={{ marginLeft: 'auto', fontFamily: "'JetBrains Mono', monospace", fontSize: 12, color: '#6e6757' }}>{idx + 1} / {pool.length}</div>
       </div>
 
       <div style={cardStyle}>
-        <div style={{ fontSize: 10, letterSpacing: '0.25em', textTransform: 'uppercase', color: '#8b6f3c', marginBottom: 8 }}>Examiner says…</div>
-        <h2 style={{ fontFamily: "'Fraunces', serif", fontSize: 28, fontWeight: 500, fontStyle: 'italic', margin: '0 0 4px 0', color: '#1a3a5c' }}>"Tell me about {current.name}."</h2>
-        <div style={{ fontSize: 13, color: '#6b5d4a', marginBottom: 8 }}><em>{current.category}</em></div>
+        <div style={{ fontSize: 10, letterSpacing: '0.25em', textTransform: 'uppercase', color: '#7c2d2d', marginBottom: 8 }}>Examiner says…</div>
+        <h2 style={{ fontFamily: "'Fraunces', serif", fontSize: 28, fontWeight: 500, fontStyle: 'italic', margin: '0 0 4px 0', color: '#2b3742' }}>"Tell me about {current.name}."</h2>
+        <div style={{ fontSize: 13, color: '#6e6757', marginBottom: 8 }}><em>{current.category}</em></div>
 
-        <div style={{ borderTop: '1px solid #e3d7bc', paddingTop: 16, marginTop: 12 }}>
-          <p style={{ fontSize: 14, color: '#6b5d4a', fontStyle: 'italic', margin: '0 0 14px 0', lineHeight: 1.6 }}>
+        <div style={{ borderTop: '1px solid #e6e1d5', paddingTop: 16, marginTop: 12 }}>
+          <p style={{ fontSize: 14, color: '#6e6757', fontStyle: 'italic', margin: '0 0 14px 0', lineHeight: 1.6 }}>
             Recite out loud, in order: <strong>court &amp; year</strong> → <strong>facts</strong> → <strong>issue</strong> → <strong>holding</strong> → <strong>significance</strong>. Reveal each only after you attempt it.
           </p>
         </div>
@@ -1128,18 +1202,21 @@ function OralExamMode({ progress, markCase }) {
         <RevealSection label="4 · Significance" content={current.significance} revealed={revealed.sig}
           onReveal={() => setRevealed(r => ({ ...r, sig: true }))} />
 
-        <div style={{ marginTop: 24, paddingTop: 18, borderTop: '1px solid #e3d7bc' }}>
-          <div style={{ fontSize: 12, color: '#6b5d4a', marginBottom: 10, letterSpacing: '0.05em' }}>How well did you know this (including court &amp; year)?</div>
+        <div style={{ marginTop: 24, paddingTop: 18, borderTop: '1px solid #e6e1d5' }}>
+          <div style={{ fontSize: 12, color: '#6e6757', marginBottom: 10, letterSpacing: '0.05em' }}>How well did you know this?</div>
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-            <SelfAssessBtn label="Got it cold" color="#3d6b3a" active={progress[current.id] === 'mastered'} onClick={() => { markCase(current.id, 'mastered'); next(); }} />
-            <SelfAssessBtn label="Needs review" color="#a06530" active={progress[current.id] === 'reviewing'} onClick={() => { markCase(current.id, 'reviewing'); next(); }} />
+            <SelfAssessBtn label="Got it cold" color="#34602f" active={progress[current.id] === 'mastered'} onClick={() => { markCase(current.id, 'mastered'); next(); }} />
+            <SelfAssessBtn label="Needs review" color="#8a5a1c" active={progress[current.id] === 'reviewing'} onClick={() => { markCase(current.id, 'reviewing'); next(); }} />
             <SelfAssessBtn label="Didn't know it" color="#8b2c2c" active={progress[current.id] === 'unknown'} onClick={() => { markCase(current.id, 'unknown'); next(); }} />
           </div>
         </div>
       </div>
 
-      <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 16 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 16, gap: 10, flexWrap: 'wrap' }}>
         <button onClick={prev} style={btnSecondary}><ChevronLeft size={16} /> Previous</button>
+        <button onClick={() => { toggleBury('case:' + current.id); reset(); setIdx(i => Math.min(i, pool.length - 2 < 0 ? 0 : pool.length - 2)); }} style={btnGhost} title="Hide this case from study sets">
+          <X size={13} /> Bury this case
+        </button>
         <button onClick={next} style={btnPrimary}>Next case <ChevronRight size={16} /></button>
       </div>
     </div>
@@ -1148,11 +1225,11 @@ function OralExamMode({ progress, markCase }) {
 
 function ViewToggle({ view, setView }) {
   return (
-    <div style={{ display: 'inline-flex', gap: 0, marginBottom: 16, border: '1.5px solid #1a3a5c', borderRadius: 6, overflow: 'hidden' }}>
+    <div style={{ display: 'inline-flex', gap: 0, marginBottom: 16, border: '1.5px solid #2b3742', borderRadius: 6, overflow: 'hidden' }}>
       {[{ id: 'drill', label: 'Examiner Drill', icon: Mic }, { id: 'map', label: 'Category Map', icon: Map }].map(t => {
         const Icon = t.icon; const active = view === t.id;
         return (
-          <button key={t.id} onClick={() => setView(t.id)} style={{ padding: '8px 16px', border: 'none', background: active ? '#1a3a5c' : 'transparent', color: active ? '#fffdf6' : '#1a3a5c', fontFamily: "'Fraunces', serif", fontStyle: active ? 'italic' : 'normal', fontSize: 14, display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+          <button key={t.id} onClick={() => setView(t.id)} style={{ padding: '8px 16px', border: 'none', background: active ? '#2b3742' : 'transparent', color: active ? '#ffffff' : '#2b3742', fontFamily: "'Fraunces', serif", fontStyle: active ? 'italic' : 'normal', fontSize: 14, display: 'inline-flex', alignItems: 'center', gap: 6 }}>
             <Icon size={14} /> {t.label}
           </button>
         );
@@ -1163,12 +1240,12 @@ function ViewToggle({ view, setView }) {
 
 function RevealSection({ label, content, revealed, onReveal, highlight }) {
   return (
-    <div style={{ marginTop: 16, padding: 16, background: highlight ? '#fbf7ed' : '#faf6ec', border: `1px solid ${highlight ? '#d4c282' : '#e3d7bc'}`, borderLeft: `3px solid ${highlight ? '#1a3a5c' : '#c4b594'}`, borderRadius: 2 }}>
+    <div style={{ marginTop: 16, padding: 16, background: highlight ? '#f5f2ea' : '#f5f2ea', border: `1px solid ${highlight ? '#b85a5a' : '#e6e1d5'}`, borderLeft: `3px solid ${highlight ? '#2b3742' : '#cfc8b8'}`, borderRadius: 2 }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: revealed ? 10 : 0 }}>
-        <div style={{ fontSize: 11, letterSpacing: '0.15em', textTransform: 'uppercase', color: '#8b6f3c', fontWeight: 600 }}>{label}</div>
+        <div style={{ fontSize: 11, letterSpacing: '0.15em', textTransform: 'uppercase', color: '#7c2d2d', fontWeight: 600 }}>{label}</div>
         {!revealed && (<button onClick={onReveal} style={{ ...btnGhost, padding: '4px 10px', fontSize: 12 }}><Eye size={12} /> Reveal</button>)}
       </div>
-      {revealed && (<div style={{ fontSize: 15, lineHeight: 1.65, color: '#2a2520', fontFamily: "'Source Serif Pro', Georgia, serif" }}>{content}</div>)}
+      {revealed && (<div style={{ fontSize: 15, lineHeight: 1.65, color: '#283038', fontFamily: "'Source Serif Pro', Georgia, serif" }}>{content}</div>)}
     </div>
   );
 }
@@ -1182,40 +1259,54 @@ function SelfAssessBtn({ label, color, onClick, active }) {
 // =====================================================================
 // CASE LIBRARY (Browse) — collapsible by category + Reference Library
 // =====================================================================
-function BrowseMode({ progress }) {
+function BrowseMode({ progress, buried, toggleBury }) {
   const [openId, setOpenId] = useState(null);
   const [filter, setFilter] = useState('all');
+  const [showBuried, setShowBuried] = useState(false);
 
   const grouped = useMemo(() => {
-    const list = filter === 'all' ? CASES : CASES.filter(c => c.category === filter);
+    let list = filter === 'all' ? CASES : CASES.filter(c => c.category === filter);
+    if (!showBuried) list = list.filter(c => !buried['case:' + c.id]);
     const g = {};
     list.forEach(c => { if (!g[c.category]) g[c.category] = []; g[c.category].push(c); });
     return g;
-  }, [filter]);
+  }, [filter, buried, showBuried]);
+
+  const buriedCount = CASES.filter(c => buried['case:' + c.id]).length;
 
   return (
     <div>
-      <select value={filter} onChange={(e) => setFilter(e.target.value)} style={{ ...selectStyle, marginBottom: 20 }}>
-        <option value="all">All Categories</option>
-        {CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
-      </select>
+      <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'center', marginBottom: 20 }}>
+        <select value={filter} onChange={(e) => setFilter(e.target.value)} style={selectStyle}>
+          <option value="all">All Categories</option>
+          {CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
+        </select>
+        {buriedCount > 0 && (
+          <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 13, color: '#2b3742', cursor: 'pointer' }}>
+            <input type="checkbox" checked={showBuried} onChange={(e) => setShowBuried(e.target.checked)} />
+            Show buried ({buriedCount})
+          </label>
+        )}
+      </div>
 
       {Object.entries(grouped).map(([cat, list]) => (
         <section key={cat} style={{ marginBottom: 32 }}>
-          <h3 style={{ fontFamily: "'Fraunces', serif", fontSize: 22, fontStyle: 'italic', fontWeight: 500, color: '#1a3a5c', margin: '0 0 14px 0', borderBottom: '1px solid #d4c5a8', paddingBottom: 8 }}>{cat}</h3>
+          <h3 style={{ fontFamily: "'Fraunces', serif", fontSize: 22, fontStyle: 'italic', fontWeight: 500, color: '#2b3742', margin: '0 0 14px 0', borderBottom: '1px solid #dcd6c8', paddingBottom: 8 }}>{cat}</h3>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
             {[...list].sort((a, b) => a.year - b.year).map(c => {
               const open = openId === c.id;
               const status = progress[c.id];
-              const statusColor = status === 'mastered' ? '#3d6b3a' : status === 'reviewing' ? '#a06530' : status === 'unknown' ? '#8b2c2c' : null;
+              const isBuried = !!buried['case:' + c.id];
+              const statusColor = status === 'mastered' ? '#34602f' : status === 'reviewing' ? '#8a5a1c' : status === 'unknown' ? '#8b2c2c' : null;
               return (
-                <div key={c.id} style={{ background: '#faf6ec', border: '1px solid #e3d7bc', borderLeft: statusColor ? `4px solid ${statusColor}` : '4px solid #e3d7bc', borderRadius: 3, overflow: 'hidden' }}>
+                <div key={c.id} style={{ background: '#f5f2ea', border: '1px solid #e6e1d5', borderLeft: statusColor ? `4px solid ${statusColor}` : '4px solid #e6e1d5', borderRadius: 3, overflow: 'hidden', opacity: isBuried ? 0.55 : 1 }}>
                   <button onClick={() => setOpenId(open ? null : c.id)} style={{ width: '100%', background: 'none', border: 'none', padding: '12px 16px', textAlign: 'left', display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontFamily: 'inherit' }}>
                     <span>
-                      <span style={{ fontFamily: "'Fraunces', serif", fontSize: 17, fontStyle: 'italic', color: '#1a3a5c', fontWeight: 500 }}>{c.name}</span>
-                      <span style={{ fontSize: 12, color: '#6b5d4a', marginLeft: 10 }}>({c.year}, {c.court})</span>
+                      <span style={{ fontFamily: "'Fraunces', serif", fontSize: 17, fontStyle: 'italic', color: '#2b3742', fontWeight: 500 }}>{c.name}</span>
+                      <span style={{ fontSize: 12, color: '#6e6757', marginLeft: 10 }}>({c.year}, {c.court})</span>
+                      {isBuried && <span style={{ fontSize: 11, color: '#34602f', marginLeft: 8 }}>· buried</span>}
                     </span>
-                    <ChevronRight size={16} style={{ color: '#8b6f3c', transform: open ? 'rotate(90deg)' : 'rotate(0)', transition: 'transform 0.2s' }} />
+                    <ChevronRight size={16} style={{ color: '#7c2d2d', transform: open ? 'rotate(90deg)' : 'rotate(0)', transition: 'transform 0.2s' }} />
                   </button>
                   {open && (
                     <div style={{ padding: '0 16px 16px 16px', fontFamily: "'Source Serif Pro', Georgia, serif", fontSize: 14, lineHeight: 1.6 }}>
@@ -1225,10 +1316,13 @@ function BrowseMode({ progress }) {
                       <DetailRow label="Significance" content={c.significance} />
                       {c.elements?.length > 0 && (
                         <div style={{ marginTop: 10 }}>
-                          <div style={{ fontSize: 10, letterSpacing: '0.15em', textTransform: 'uppercase', color: '#8b6f3c', fontWeight: 600, marginBottom: 4 }}>Key Elements</div>
+                          <div style={{ fontSize: 10, letterSpacing: '0.15em', textTransform: 'uppercase', color: '#7c2d2d', fontWeight: 600, marginBottom: 4 }}>Key Elements</div>
                           <ul style={{ margin: 0, paddingLeft: 20 }}>{c.elements.map((el, i) => <li key={i}>{el}</li>)}</ul>
                         </div>
                       )}
+                      <div style={{ marginTop: 14 }}>
+                        <BuryButton buried={isBuried} onClick={() => toggleBury('case:' + c.id)} label="Bury this case" />
+                      </div>
                     </div>
                   )}
                 </div>
@@ -1244,8 +1338,8 @@ function BrowseMode({ progress }) {
 function DetailRow({ label, content, highlight }) {
   return (
     <div style={{ marginTop: 10 }}>
-      <div style={{ fontSize: 10, letterSpacing: '0.15em', textTransform: 'uppercase', color: highlight ? '#1a3a5c' : '#8b6f3c', fontWeight: 600, marginBottom: 3 }}>{label}</div>
-      <div style={{ color: '#2a2520', fontWeight: highlight ? 500 : 400 }}>{content}</div>
+      <div style={{ fontSize: 10, letterSpacing: '0.15em', textTransform: 'uppercase', color: highlight ? '#2b3742' : '#7c2d2d', fontWeight: 600, marginBottom: 3 }}>{label}</div>
+      <div style={{ color: '#283038', fontWeight: highlight ? 500 : 400 }}>{content}</div>
     </div>
   );
 }
@@ -1253,29 +1347,31 @@ function DetailRow({ label, content, highlight }) {
 // =====================================================================
 // CONSTITUTIONAL LAW
 // =====================================================================
-function ConLawMode() {
+function ConLawMode({ buried, toggleBury }) {
   const [open, setOpen] = useState(null);
   return (
     <div>
-      <SectionHeader title="The Constitutional Amendments" sub="The Bill of Rights (1st–10th, 1791) originally bound only the federal government. Most were later applied to the states via selective incorporation through the 14th Amendment." />
+      <SectionHeader title="The Constitutional Amendments" sub="The Bill of Rights (1st–10th, 1791) originally bound only the federal government. Most were later applied to the states via selective incorporation through the 14th Amendment. Bury any you've locked in to drop them from Flashcards and the MCQ quiz." />
       <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 36 }}>
         {AMENDMENTS.map(a => {
           const isOpen = open === a.num;
+          const isBuried = !!buried['amend:' + a.num];
           return (
-            <div key={a.num} style={{ background: '#faf6ec', border: '1px solid #e3d7bc', borderLeft: '4px solid #1a3a5c', borderRadius: 3, overflow: 'hidden' }}>
+            <div key={a.num} style={{ background: '#f5f2ea', border: '1px solid #e6e1d5', borderLeft: '4px solid #2b3742', borderRadius: 3, overflow: 'hidden', opacity: isBuried ? 0.55 : 1 }}>
               <button onClick={() => setOpen(isOpen ? null : a.num)} style={{ width: '100%', background: 'none', border: 'none', padding: '12px 16px', textAlign: 'left', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, fontFamily: 'inherit' }}>
                 <span style={{ display: 'flex', alignItems: 'baseline', gap: 12 }}>
-                  <span style={{ fontFamily: "'Fraunces', serif", fontSize: 19, fontStyle: 'italic', fontWeight: 600, color: '#1a3a5c', minWidth: 46 }}>{a.num}</span>
-                  <span style={{ fontFamily: "'Source Serif Pro', Georgia, serif", fontSize: 15, color: '#2a2520' }}>{a.short}</span>
+                  <span style={{ fontFamily: "'Fraunces', serif", fontSize: 19, fontStyle: 'italic', fontWeight: 600, color: '#2b3742', minWidth: 46 }}>{a.num}</span>
+                  <span style={{ fontFamily: "'Source Serif Pro', Georgia, serif", fontSize: 15, color: '#283038' }}>{a.short}{isBuried && <span style={{ fontSize: 11, color: '#34602f', marginLeft: 8 }}>· buried</span>}</span>
                 </span>
-                <ChevronRight size={16} style={{ color: '#8b6f3c', flexShrink: 0, transform: isOpen ? 'rotate(90deg)' : 'rotate(0)', transition: 'transform 0.2s' }} />
+                <ChevronRight size={16} style={{ color: '#7c2d2d', flexShrink: 0, transform: isOpen ? 'rotate(90deg)' : 'rotate(0)', transition: 'transform 0.2s' }} />
               </button>
               {isOpen && (
-                <div style={{ padding: '0 16px 16px 74px', fontFamily: "'Source Serif Pro', Georgia, serif", fontSize: 14, lineHeight: 1.6, color: '#2a2520' }}>
+                <div style={{ padding: '0 16px 16px 74px', fontFamily: "'Source Serif Pro', Georgia, serif", fontSize: 14, lineHeight: 1.6, color: '#283038' }}>
                   <p style={{ margin: '0 0 10px 0' }}>{a.detail}</p>
-                  <div style={{ fontSize: 13, color: '#5c3b15', background: '#f8ead4', border: '1px solid #e0c48f', borderRadius: 3, padding: '7px 11px' }}>
+                  <div style={{ fontSize: 13, color: '#6e2626', background: '#f6e9e6', border: '1px solid #e0bdb8', borderRadius: 3, padding: '7px 11px', marginBottom: 12 }}>
                     <strong style={{ letterSpacing: '0.04em' }}>Incorporation:</strong> {a.incorp}
                   </div>
+                  <BuryButton buried={isBuried} onClick={() => toggleBury('amend:' + a.num)} />
                 </div>
               )}
             </div>
@@ -1285,15 +1381,19 @@ function ConLawMode() {
 
       <SectionHeader title="Core Constitutional Law Concepts" sub="Due process, equal protection, and the tiers of scrutiny that decide how hard the government's justification must work." />
       <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-        {CONLAW_CONCEPTS.map(c => (
-          <div key={c.id} style={cardStyle}>
-            <h3 style={{ fontFamily: "'Fraunces', serif", fontSize: 20, fontStyle: 'italic', fontWeight: 500, color: '#1a3a5c', margin: '0 0 8px 0' }}>{c.title}</h3>
-            <p style={{ fontSize: 14.5, lineHeight: 1.65, color: '#2a2520', margin: '0 0 12px 0', fontFamily: "'Source Serif Pro', Georgia, serif" }}>{c.body}</p>
-            <ul style={{ margin: 0, paddingLeft: 20, fontFamily: "'Source Serif Pro', Georgia, serif", fontSize: 14, lineHeight: 1.7, color: '#3a332b' }}>
-              {c.points.map((p, i) => <li key={i}>{p}</li>)}
-            </ul>
-          </div>
-        ))}
+        {CONLAW_CONCEPTS.map(c => {
+          const isBuried = !!buried['conlaw:' + c.id];
+          return (
+            <div key={c.id} style={{ ...cardStyle, opacity: isBuried ? 0.55 : 1 }}>
+              <h3 style={{ fontFamily: "'Fraunces', serif", fontSize: 20, fontStyle: 'italic', fontWeight: 500, color: '#2b3742', margin: '0 0 8px 0' }}>{c.title}{isBuried && <span style={{ fontSize: 11, fontStyle: 'normal', color: '#34602f', marginLeft: 8 }}>· buried</span>}</h3>
+              <p style={{ fontSize: 14.5, lineHeight: 1.65, color: '#283038', margin: '0 0 12px 0', fontFamily: "'Source Serif Pro', Georgia, serif" }}>{c.body}</p>
+              <ul style={{ margin: '0 0 12px 0', paddingLeft: 20, fontFamily: "'Source Serif Pro', Georgia, serif", fontSize: 14, lineHeight: 1.7, color: '#3c4148' }}>
+                {c.points.map((p, i) => <li key={i}>{p}</li>)}
+              </ul>
+              <BuryButton buried={isBuried} onClick={() => toggleBury('conlaw:' + c.id)} />
+            </div>
+          );
+        })}
       </div>
     </div>
   );
@@ -1302,8 +1402,8 @@ function ConLawMode() {
 function SectionHeader({ title, sub }) {
   return (
     <div style={{ marginBottom: 18 }}>
-      <h2 style={{ fontFamily: "'Fraunces', serif", fontSize: 26, fontStyle: 'italic', fontWeight: 500, color: '#1a3a5c', margin: '0 0 6px 0' }}>{title}</h2>
-      {sub && <p style={{ fontSize: 13.5, color: '#6b5d4a', lineHeight: 1.6, margin: 0, fontFamily: "'Source Serif Pro', Georgia, serif", maxWidth: 760 }}>{sub}</p>}
+      <h2 style={{ fontFamily: "'Fraunces', serif", fontSize: 26, fontStyle: 'italic', fontWeight: 500, color: '#2b3742', margin: '0 0 6px 0' }}>{title}</h2>
+      {sub && <p style={{ fontSize: 13.5, color: '#6e6757', lineHeight: 1.6, margin: 0, fontFamily: "'Source Serif Pro', Georgia, serif", maxWidth: 760 }}>{sub}</p>}
     </div>
   );
 }
@@ -1311,52 +1411,61 @@ function SectionHeader({ title, sub }) {
 // =====================================================================
 // INSANITY DEFENSE
 // =====================================================================
-function InsanityMode() {
+function InsanityMode({ buried, toggleBury }) {
   return (
     <div>
       <SectionHeader title="Evolution of the Insanity Defense" sub="The legal test for insanity has swung between cognition, volition, and causation for nearly two centuries. Each test is a reaction to the perceived overreach of the one before it." />
 
       {/* Timeline summary table */}
       <div style={{ ...cardStyle, padding: 0, overflow: 'hidden', marginBottom: 28 }}>
-        <div style={{ display: 'grid', gridTemplateColumns: '120px 1fr 130px', background: '#1a3a5c', color: '#fffdf6', fontSize: 11, letterSpacing: '0.12em', textTransform: 'uppercase', fontFamily: "'JetBrains Mono', monospace" }}>
+        <div style={{ display: 'grid', gridTemplateColumns: '120px 1fr 130px', background: '#2b3742', color: '#ffffff', fontSize: 11, letterSpacing: '0.12em', textTransform: 'uppercase', fontFamily: "'JetBrains Mono', monospace" }}>
           <div style={{ padding: '10px 14px' }}>Test / Year</div>
           <div style={{ padding: '10px 14px' }}>Focus</div>
           <div style={{ padding: '10px 14px' }}>Type</div>
         </div>
         {INSANITY_TESTS.map((t, i) => (
-          <div key={t.id} style={{ display: 'grid', gridTemplateColumns: '120px 1fr 130px', borderTop: '1px solid #e3d7bc', background: i % 2 ? '#faf6ec' : '#fffdf6', fontFamily: "'Source Serif Pro', Georgia, serif", fontSize: 13.5 }}>
-            <div style={{ padding: '11px 14px' }}><div style={{ fontFamily: "'Fraunces', serif", fontStyle: 'italic', color: '#1a3a5c', fontSize: 14.5 }}>{t.name}</div><div style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 12, color: '#8b6f3c', marginTop: 2 }}>{t.year}</div></div>
-            <div style={{ padding: '11px 14px', color: '#2a2520', lineHeight: 1.5 }}>{t.focus}</div>
-            <div style={{ padding: '11px 14px' }}><span style={{ fontSize: 11.5, color: '#5c3b15', background: '#f8ead4', border: '1px solid #e0c48f', borderRadius: 3, padding: '2px 8px' }}>{t.tag}</span></div>
+          <div key={t.id} style={{ display: 'grid', gridTemplateColumns: '120px 1fr 130px', borderTop: '1px solid #e6e1d5', background: i % 2 ? '#f5f2ea' : '#ffffff', fontFamily: "'Source Serif Pro', Georgia, serif", fontSize: 13.5 }}>
+            <div style={{ padding: '11px 14px' }}><div style={{ fontFamily: "'Fraunces', serif", fontStyle: 'italic', color: '#2b3742', fontSize: 14.5 }}>{t.name}</div><div style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 12, color: '#7c2d2d', marginTop: 2 }}>{t.year}</div></div>
+            <div style={{ padding: '11px 14px', color: '#283038', lineHeight: 1.5 }}>{t.focus}</div>
+            <div style={{ padding: '11px 14px' }}><span style={{ fontSize: 11.5, color: '#6e2626', background: '#f6e9e6', border: '1px solid #e0bdb8', borderRadius: 3, padding: '2px 8px' }}>{t.tag}</span></div>
           </div>
         ))}
       </div>
 
       {/* Detailed cards */}
       <div style={{ display: 'flex', flexDirection: 'column', gap: 14, marginBottom: 36 }}>
-        {INSANITY_TESTS.map(t => (
-          <div key={t.id} style={cardStyle}>
-            <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, flexWrap: 'wrap', marginBottom: 8 }}>
-              <h3 style={{ fontFamily: "'Fraunces', serif", fontSize: 21, fontStyle: 'italic', fontWeight: 500, color: '#1a3a5c', margin: 0 }}>{t.name}</h3>
-              <span style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 12.5, color: '#8b6f3c' }}>{t.year} · {t.tag}</span>
+        {INSANITY_TESTS.map(t => {
+          const isBuried = !!buried['itest:' + t.id];
+          return (
+            <div key={t.id} style={{ ...cardStyle, opacity: isBuried ? 0.55 : 1 }}>
+              <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, flexWrap: 'wrap', marginBottom: 8 }}>
+                <h3 style={{ fontFamily: "'Fraunces', serif", fontSize: 21, fontStyle: 'italic', fontWeight: 500, color: '#2b3742', margin: 0 }}>{t.name}</h3>
+                <span style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 12.5, color: '#7c2d2d' }}>{t.year} · {t.tag}</span>
+                {isBuried && <span style={{ fontSize: 11, color: '#34602f' }}>· buried</span>}
+              </div>
+              <p style={{ fontSize: 14.5, lineHeight: 1.65, color: '#283038', margin: '0 0 10px 0', fontFamily: "'Source Serif Pro', Georgia, serif" }}>{t.rule}</p>
+              <div style={{ fontSize: 13, color: '#6e6757', fontFamily: "'Source Serif Pro', Georgia, serif", marginBottom: 12 }}>
+                <div style={{ marginBottom: 4 }}><strong style={{ color: '#2b3742' }}>Origin:</strong> {t.origin}</div>
+                <div><strong style={{ color: '#8b2c2c' }}>Criticism:</strong> {t.criticism}</div>
+              </div>
+              <BuryButton buried={isBuried} onClick={() => toggleBury('itest:' + t.id)} />
             </div>
-            <p style={{ fontSize: 14.5, lineHeight: 1.65, color: '#2a2520', margin: '0 0 10px 0', fontFamily: "'Source Serif Pro', Georgia, serif" }}>{t.rule}</p>
-            <div style={{ fontSize: 13, color: '#6b5d4a', fontFamily: "'Source Serif Pro', Georgia, serif" }}>
-              <div style={{ marginBottom: 4 }}><strong style={{ color: '#1a3a5c' }}>Origin:</strong> {t.origin}</div>
-              <div><strong style={{ color: '#8b2c2c' }}>Criticism:</strong> {t.criticism}</div>
-            </div>
-          </div>
-        ))}
+          );
+        })}
       </div>
 
       <SectionHeader title="The Insanity Defense Reform Act (1984)" sub="Passed in the wake of John Hinckley Jr.'s NGRI acquittal for the attempted assassination of President Reagan. It is the modern federal standard and dramatically narrowed the defense." />
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: 12 }}>
-        {IDRA_PROVISIONS.map((p, i) => (
-          <div key={i} style={{ background: '#faf6ec', border: '1px solid #e3d7bc', borderLeft: '3px solid #1a3a5c', borderRadius: 3, padding: 14 }}>
-            <div style={{ fontFamily: "'Fraunces', serif", fontSize: 16, fontStyle: 'italic', fontWeight: 500, color: '#1a3a5c', marginBottom: 5 }}>{p.h}</div>
-            <div style={{ fontSize: 13.5, lineHeight: 1.55, color: '#2a2520', fontFamily: "'Source Serif Pro', Georgia, serif" }}>{p.t}</div>
-          </div>
-        ))}
+        {IDRA_PROVISIONS.map((p, i) => {
+          const isBuried = !!buried['idra:' + i];
+          return (
+            <div key={i} style={{ background: '#f5f2ea', border: '1px solid #e6e1d5', borderLeft: '3px solid #2b3742', borderRadius: 3, padding: 14, opacity: isBuried ? 0.55 : 1 }}>
+              <div style={{ fontFamily: "'Fraunces', serif", fontSize: 16, fontStyle: 'italic', fontWeight: 500, color: '#2b3742', marginBottom: 5 }}>{p.h}{isBuried && <span style={{ fontSize: 11, fontStyle: 'normal', color: '#34602f', marginLeft: 6 }}>· buried</span>}</div>
+              <div style={{ fontSize: 13.5, lineHeight: 1.55, color: '#283038', fontFamily: "'Source Serif Pro', Georgia, serif", marginBottom: 10 }}>{p.t}</div>
+              <BuryButton buried={isBuried} onClick={() => toggleBury('idra:' + i)} />
+            </div>
+          );
+        })}
       </div>
     </div>
   );
@@ -1365,7 +1474,7 @@ function InsanityMode() {
 // =====================================================================
 // BASIC LAW CONCEPTS
 // =====================================================================
-function BasicLawMode() {
+function BasicLawMode({ buried, toggleBury }) {
   const groups = useMemo(() => {
     const order = ['Competence (Ohio)', 'Expert Witness', 'Standards of Proof', 'Foundations', 'Court Structure', 'Trial Process', 'Appeals', 'Criminal Law', 'Ohio Statutes'];
     const g = {};
@@ -1378,20 +1487,22 @@ function BasicLawMode() {
       <SectionHeader title="Basic Law Concepts" sub="The structural fundamentals — sources of law, the court ladder, standards of proof, expert testimony — plus the two you must have cold: Ohio's competence-to-stand-trial statute and the Daubert criteria." />
       {groups.map(([cat, list]) => (
         <section key={cat} style={{ marginBottom: 28 }}>
-          <h3 style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 12, fontWeight: 500, color: '#8b6f3c', margin: '0 0 12px 0', textTransform: 'uppercase', letterSpacing: '0.18em' }}>{cat}</h3>
+          <h3 style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 12, fontWeight: 500, color: '#7c2d2d', margin: '0 0 12px 0', textTransform: 'uppercase', letterSpacing: '0.18em' }}>{cat}</h3>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
             {list.map(c => {
               const star = c.id === 'ohio_cst' || c.id === 'daubert';
+              const isBuried = !!buried['basic:' + c.id];
               return (
-                <div key={c.id} style={{ ...cardStyle, borderLeft: star ? '4px solid #8b6f3c' : '1px solid #d4c5a8' }}>
-                  <h4 style={{ fontFamily: "'Fraunces', serif", fontSize: 20, fontStyle: 'italic', fontWeight: 500, color: '#1a3a5c', margin: '0 0 8px 0', display: 'flex', alignItems: 'center', gap: 8 }}>
-                    {star && <span style={{ fontSize: 11, fontStyle: 'normal', background: '#8b6f3c', color: '#fffdf6', borderRadius: 3, padding: '2px 7px', letterSpacing: '0.08em', fontFamily: "'JetBrains Mono', monospace" }}>HIGH YIELD</span>}
-                    {c.title}
+                <div key={c.id} style={{ ...cardStyle, borderLeft: star ? '4px solid #7c2d2d' : '1px solid #dcd6c8', opacity: isBuried ? 0.55 : 1 }}>
+                  <h4 style={{ fontFamily: "'Fraunces', serif", fontSize: 20, fontStyle: 'italic', fontWeight: 500, color: '#2b3742', margin: '0 0 8px 0', display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                    {star && <span style={{ fontSize: 11, fontStyle: 'normal', background: '#7c2d2d', color: '#ffffff', borderRadius: 3, padding: '2px 7px', letterSpacing: '0.08em', fontFamily: "'JetBrains Mono', monospace" }}>HIGH YIELD</span>}
+                    {c.title}{isBuried && <span style={{ fontSize: 11, fontStyle: 'normal', color: '#34602f' }}>· buried</span>}
                   </h4>
-                  <p style={{ fontSize: 14.5, lineHeight: 1.65, color: '#2a2520', margin: '0 0 12px 0', fontFamily: "'Source Serif Pro', Georgia, serif" }}>{c.body}</p>
-                  <ul style={{ margin: 0, paddingLeft: 20, fontFamily: "'Source Serif Pro', Georgia, serif", fontSize: 14, lineHeight: 1.7, color: '#3a332b' }}>
+                  <p style={{ fontSize: 14.5, lineHeight: 1.65, color: '#283038', margin: '0 0 12px 0', fontFamily: "'Source Serif Pro', Georgia, serif" }}>{c.body}</p>
+                  <ul style={{ margin: '0 0 12px 0', paddingLeft: 20, fontFamily: "'Source Serif Pro', Georgia, serif", fontSize: 14, lineHeight: 1.7, color: '#3c4148' }}>
                     {c.points.map((p, i) => <li key={i}>{p}</li>)}
                   </ul>
+                  <BuryButton buried={isBuried} onClick={() => toggleBury('basic:' + c.id)} />
                 </div>
               );
             })}
@@ -1425,12 +1536,12 @@ function TermsMode() {
         <div style={{ display: 'flex', gap: 8, marginBottom: 20, alignItems: 'center', flexWrap: 'wrap' }}>
           <button onClick={() => setStudyMode('list')} style={btnSecondary}>← Back to list</button>
           <button onClick={() => { setOrder(shuffleArr(TERMS.map((_, i) => i))); setIdx(0); setShowDef(false); }} style={btnSecondary}><Shuffle size={14} /> Shuffle</button>
-          <div style={{ marginLeft: 'auto', fontFamily: "'JetBrains Mono', monospace", fontSize: 12, color: '#6b5d4a' }}>{idx + 1} / {TERMS.length}</div>
+          <div style={{ marginLeft: 'auto', fontFamily: "'JetBrains Mono', monospace", fontSize: 12, color: '#6e6757' }}>{idx + 1} / {TERMS.length}</div>
         </div>
         <div onClick={() => setShowDef(s => !s)} style={{ ...cardStyle, minHeight: 280, display: 'flex', flexDirection: 'column', justifyContent: 'center', cursor: 'pointer' }}>
-          <div style={{ fontSize: 10, letterSpacing: '0.2em', textTransform: 'uppercase', color: '#8b6f3c', marginBottom: 12 }}>Define this term {!showDef && '(click to reveal)'}</div>
-          <h2 style={{ fontFamily: "'Fraunces', serif", fontSize: 32, fontWeight: 600, fontStyle: 'italic', margin: '0 0 18px 0', color: '#1a3a5c' }}>{t.term}</h2>
-          {showDef && <p style={{ fontSize: 16, lineHeight: 1.6, margin: 0, fontFamily: "'Source Serif Pro', Georgia, serif", color: '#2a2520' }}>{t.def}</p>}
+          <div style={{ fontSize: 10, letterSpacing: '0.2em', textTransform: 'uppercase', color: '#7c2d2d', marginBottom: 12 }}>Define this term {!showDef && '(click to reveal)'}</div>
+          <h2 style={{ fontFamily: "'Fraunces', serif", fontSize: 32, fontWeight: 600, fontStyle: 'italic', margin: '0 0 18px 0', color: '#2b3742' }}>{t.term}</h2>
+          {showDef && <p style={{ fontSize: 16, lineHeight: 1.6, margin: 0, fontFamily: "'Source Serif Pro', Georgia, serif", color: '#283038' }}>{t.def}</p>}
         </div>
         <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 16 }}>
           <button onClick={() => { setIdx(i => (i - 1 + TERMS.length) % TERMS.length); setShowDef(false); }} style={btnSecondary}><ChevronLeft size={16} /> Previous</button>
@@ -1444,15 +1555,15 @@ function TermsMode() {
     <div>
       <div style={{ display: 'flex', gap: 10, marginBottom: 20, flexWrap: 'wrap', alignItems: 'center' }}>
         <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search terms…"
-          style={{ padding: '8px 12px', fontFamily: 'inherit', fontSize: 14, border: '1px solid #c4b594', background: '#faf6ec', borderRadius: 4, flex: 1, minWidth: 200, color: '#1a1612' }} />
-        <span style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 12, color: '#6b5d4a' }}>{filtered.length} of {TERMS.length}</span>
+          style={{ padding: '8px 12px', fontFamily: 'inherit', fontSize: 14, border: '1px solid #cfc8b8', background: '#f5f2ea', borderRadius: 4, flex: 1, minWidth: 200, color: '#232a31' }} />
+        <span style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 12, color: '#6e6757' }}>{filtered.length} of {TERMS.length}</span>
         <button onClick={() => { setStudyMode('quiz'); setOrder(TERMS.map((_, i) => i)); setIdx(0); setShowDef(false); }} style={btnPrimary}><GraduationCap size={14} /> Drill mode</button>
       </div>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: 12 }}>
         {filtered.map((t, i) => (
-          <div key={i} style={{ background: '#faf6ec', border: '1px solid #e3d7bc', borderLeft: '3px solid #8b6f3c', padding: 14, borderRadius: 3 }}>
-            <div style={{ fontFamily: "'Fraunces', serif", fontSize: 17, fontStyle: 'italic', fontWeight: 500, color: '#1a3a5c', marginBottom: 6 }}>{t.term}</div>
-            <div style={{ fontSize: 13.5, lineHeight: 1.55, fontFamily: "'Source Serif Pro', Georgia, serif", color: '#2a2520' }}>{t.def}</div>
+          <div key={i} style={{ background: '#f5f2ea', border: '1px solid #e6e1d5', borderLeft: '3px solid #7c2d2d', padding: 14, borderRadius: 3 }}>
+            <div style={{ fontFamily: "'Fraunces', serif", fontSize: 17, fontStyle: 'italic', fontWeight: 500, color: '#2b3742', marginBottom: 6 }}>{t.term}</div>
+            <div style={{ fontSize: 13.5, lineHeight: 1.55, fontFamily: "'Source Serif Pro', Georgia, serif", color: '#283038' }}>{t.def}</div>
           </div>
         ))}
       </div>
@@ -1463,69 +1574,104 @@ function TermsMode() {
 // =====================================================================
 // FLASHCARDS
 // =====================================================================
-function FlashcardsMode({ progress, markCase }) {
+function FlashcardsMode({ progress, markCase, buried, toggleBury }) {
+  const [deckId, setDeckId] = useState('cases');
   const [filter, setFilter] = useState('all');
   const [idx, setIdx] = useState(0);
   const [flipped, setFlipped] = useState(false);
   const [shuffleSeed, setShuffleSeed] = useState(0);
 
-  const pool = useMemo(() => {
-    let list = CASES;
-    if (filter === 'review') list = list.filter(c => progress[c.id] !== 'mastered');
-    if (filter === 'unseen') list = list.filter(c => !progress[c.id]);
-    if (CATEGORIES.includes(filter)) list = list.filter(c => c.category === filter);
-    const arr = [...list];
-    let seed = shuffleSeed;
-    for (let i = arr.length - 1; i > 0; i--) { seed = (seed * 9301 + 49297) % 233280; const j = Math.floor((seed / 233280) * (i + 1)); [arr[i], arr[j]] = [arr[j], arr[i]]; }
-    return arr;
-  }, [filter, shuffleSeed, progress]);
+  const reset = () => { setIdx(0); setFlipped(false); };
 
-  const current = pool[idx];
-  if (!current) return <EmptyState message="No cases in this set." />;
+  // Build the active deck as a normalized list of { key, front, sub, frontExtra, back, backHead }
+  const deck = useMemo(() => {
+    const seedShuffle = (arr) => {
+      const a = [...arr]; let seed = shuffleSeed || 1;
+      for (let i = a.length - 1; i > 0; i--) { seed = (seed * 9301 + 49297) % 233280; const j = Math.floor((seed / 233280) * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; }
+      return a;
+    };
+    if (deckId === 'cases') {
+      let list = CASES.filter(c => !buried['case:' + c.id]);
+      if (filter === 'review') list = list.filter(c => progress[c.id] !== 'mastered');
+      if (filter === 'unseen') list = list.filter(c => !progress[c.id]);
+      if (CATEGORIES.includes(filter)) list = list.filter(c => c.category === filter);
+      return seedShuffle(list.map(c => ({
+        key: 'case:' + c.id, front: c.name, sub: c.category, frontExtra: `${c.court} · ${c.year}`,
+        backHead: 'Holding', back: c.holding, backHead2: 'Significance', back2: c.significance,
+      })));
+    }
+    const src = deckId === 'conlaw' ? CONLAW_DECK : deckId === 'insanity' ? INSANITY_DECK : BASICLAW_DECK;
+    return seedShuffle(src.filter(d => !buried[d.key]).map(d => ({
+      key: d.key, front: d.front, sub: d.sub, frontExtra: null, backHead: 'Answer', back: d.back,
+    })));
+  }, [deckId, filter, shuffleSeed, progress, buried]);
+
+  const decks = [
+    { id: 'cases', label: 'Cases', count: CASES.filter(c => !buried['case:' + c.id]).length },
+    { id: 'conlaw', label: 'Con Law', count: CONLAW_DECK.filter(d => !buried[d.key]).length },
+    { id: 'insanity', label: 'Insanity', count: INSANITY_DECK.filter(d => !buried[d.key]).length },
+    { id: 'basiclaw', label: 'Basic Law', count: BASICLAW_DECK.filter(d => !buried[d.key]).length },
+  ];
+
+  const current = deck[idx];
+  const advance = () => { setFlipped(false); setIdx(i => deck.length ? (i + 1) % deck.length : 0); };
 
   return (
     <div>
+      <SubTabs tabs={decks} active={deckId} setActive={(id) => { setDeckId(id); setFilter('all'); reset(); }} />
+
       <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center', marginBottom: 20 }}>
-        <select value={filter} onChange={(e) => { setFilter(e.target.value); setIdx(0); setFlipped(false); }} style={selectStyle}>
-          <option value="all">All Cases ({CASES.length})</option>
-          <option value="unseen">Unseen Only</option>
-          <option value="review">Needs Review</option>
-          <optgroup label="By Category">{CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}</optgroup>
-        </select>
-        <button onClick={() => { setShuffleSeed(Math.random() * 10000); setIdx(0); setFlipped(false); }} style={btnSecondary}><Shuffle size={14} /> Shuffle</button>
-        <div style={{ marginLeft: 'auto', fontFamily: "'JetBrains Mono', monospace", fontSize: 12, color: '#6b5d4a' }}>{idx + 1} / {pool.length}</div>
-      </div>
-
-      <div onClick={() => setFlipped(f => !f)} style={{ ...cardStyle, minHeight: 320, display: 'flex', flexDirection: 'column', justifyContent: 'center', textAlign: 'center', cursor: 'pointer', position: 'relative' }}>
-        <div style={{ position: 'absolute', top: 16, right: 16, fontSize: 10, letterSpacing: '0.15em', textTransform: 'uppercase', color: '#8b6f3c' }}>{flipped ? 'Answer' : 'Click to flip'}</div>
-        {!flipped ? (
-          <div>
-            <div style={{ fontSize: 11, letterSpacing: '0.2em', textTransform: 'uppercase', color: '#8b6f3c', marginBottom: 12 }}>{current.category}</div>
-            <h2 style={{ fontFamily: "'Fraunces', serif", fontSize: 36, fontWeight: 600, fontStyle: 'italic', margin: '0 0 8px 0', color: '#1a3a5c' }}>{current.name}</h2>
-            <div style={{ fontSize: 14, color: '#6b5d4a' }}>{current.court} · {current.year}</div>
-          </div>
-        ) : (
-          <div style={{ textAlign: 'left' }}>
-            <div style={{ fontSize: 11, letterSpacing: '0.2em', textTransform: 'uppercase', color: '#1a3a5c', marginBottom: 8, fontWeight: 600 }}>Holding</div>
-            <p style={{ fontSize: 17, lineHeight: 1.55, margin: '0 0 16px 0', fontFamily: "'Source Serif Pro', Georgia, serif", color: '#2a2520' }}>{current.holding}</p>
-            <div style={{ fontSize: 11, letterSpacing: '0.2em', textTransform: 'uppercase', color: '#8b6f3c', marginBottom: 6, fontWeight: 600 }}>Significance</div>
-            <p style={{ fontSize: 14, lineHeight: 1.55, margin: 0, fontFamily: "'Source Serif Pro', Georgia, serif", color: '#4a4138', fontStyle: 'italic' }}>{current.significance}</p>
-          </div>
+        {deckId === 'cases' && (
+          <select value={filter} onChange={(e) => { setFilter(e.target.value); reset(); }} style={selectStyle}>
+            <option value="all">All Cases</option>
+            <option value="unseen">Unseen Only</option>
+            <option value="review">Needs Review</option>
+            <optgroup label="By Category">{CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}</optgroup>
+          </select>
         )}
+        <button onClick={() => { setShuffleSeed(Math.random() * 10000); reset(); }} style={btnSecondary}><Shuffle size={14} /> Shuffle</button>
+        <div style={{ marginLeft: 'auto', fontFamily: "'JetBrains Mono', monospace", fontSize: 12, color: '#6e6757' }}>{deck.length ? idx + 1 : 0} / {deck.length}</div>
       </div>
 
-      {flipped && (
-        <div style={{ marginTop: 16, display: 'flex', gap: 8, justifyContent: 'center', flexWrap: 'wrap' }}>
-          <SelfAssessBtn label="Got it" color="#3d6b3a" onClick={() => { markCase(current.id, 'mastered'); setFlipped(false); setIdx(i => (i + 1) % pool.length); }} />
-          <SelfAssessBtn label="Review" color="#a06530" onClick={() => { markCase(current.id, 'reviewing'); setFlipped(false); setIdx(i => (i + 1) % pool.length); }} />
-          <SelfAssessBtn label="Missed" color="#8b2c2c" onClick={() => { markCase(current.id, 'unknown'); setFlipped(false); setIdx(i => (i + 1) % pool.length); }} />
-        </div>
+      {!current ? <EmptyState message="Every card here is buried. Restore some from the Progress tab or the reference tabs." /> : (
+        <>
+          <div onClick={() => setFlipped(f => !f)} style={{ ...cardStyle, minHeight: 320, display: 'flex', flexDirection: 'column', justifyContent: 'center', textAlign: flipped ? 'left' : 'center', cursor: 'pointer', position: 'relative' }}>
+            <div style={{ position: 'absolute', top: 16, right: 16, fontSize: 10, letterSpacing: '0.15em', textTransform: 'uppercase', color: '#7c2d2d' }}>{flipped ? 'Answer' : 'Click to flip'}</div>
+            {!flipped ? (
+              <div>
+                <div style={{ fontSize: 11, letterSpacing: '0.2em', textTransform: 'uppercase', color: '#7c2d2d', marginBottom: 12 }}>{current.sub}</div>
+                <h2 style={{ fontFamily: "'Fraunces', serif", fontSize: 32, fontWeight: 600, fontStyle: 'italic', margin: '0 0 8px 0', color: '#2b3742', lineHeight: 1.15 }}>{current.front}</h2>
+                {current.frontExtra && <div style={{ fontSize: 14, color: '#6e6757' }}>{current.frontExtra}</div>}
+              </div>
+            ) : (
+              <div>
+                <div style={{ fontSize: 11, letterSpacing: '0.2em', textTransform: 'uppercase', color: '#2b3742', marginBottom: 8, fontWeight: 600 }}>{current.backHead}</div>
+                <p style={{ fontSize: 16, lineHeight: 1.6, margin: '0 0 16px 0', fontFamily: "'Source Serif Pro', Georgia, serif", color: '#283038', whiteSpace: 'pre-line' }}>{current.back}</p>
+                {current.back2 && <>
+                  <div style={{ fontSize: 11, letterSpacing: '0.2em', textTransform: 'uppercase', color: '#7c2d2d', marginBottom: 6, fontWeight: 600 }}>{current.backHead2}</div>
+                  <p style={{ fontSize: 14, lineHeight: 1.55, margin: 0, fontFamily: "'Source Serif Pro', Georgia, serif", color: '#4c5158', fontStyle: 'italic' }}>{current.back2}</p>
+                </>}
+              </div>
+            )}
+          </div>
+
+          {flipped && (
+            <div style={{ marginTop: 16, display: 'flex', gap: 8, justifyContent: 'center', flexWrap: 'wrap' }}>
+              <SelfAssessBtn label="Got it" color="#34602f" onClick={() => { markCase(current.key, 'mastered'); advance(); }} />
+              <SelfAssessBtn label="Review" color="#8a5a1c" onClick={() => { markCase(current.key, 'reviewing'); advance(); }} />
+              <SelfAssessBtn label="Missed" color="#8b2c2c" onClick={() => { markCase(current.key, 'unknown'); advance(); }} />
+            </div>
+          )}
+
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 16, gap: 10, flexWrap: 'wrap' }}>
+            <button onClick={() => { setFlipped(false); setIdx(i => (i - 1 + deck.length) % deck.length); }} style={btnSecondary}><ChevronLeft size={16} /> Previous</button>
+            <button onClick={() => { toggleBury(current.key); setFlipped(false); setIdx(i => Math.min(i, deck.length - 2 < 0 ? 0 : deck.length - 2)); }} style={btnGhost} title="Hide this from study sets">
+              <X size={13} /> Bury this
+            </button>
+            <button onClick={() => { setFlipped(false); setIdx(i => (i + 1) % deck.length); }} style={btnPrimary}>Next <ChevronRight size={16} /></button>
+          </div>
+        </>
       )}
-
-      <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 16 }}>
-        <button onClick={() => { setIdx(i => (i - 1 + pool.length) % pool.length); setFlipped(false); }} style={btnSecondary}><ChevronLeft size={16} /> Previous</button>
-        <button onClick={() => { setIdx(i => (i + 1) % pool.length); setFlipped(false); }} style={btnPrimary}>Next <ChevronRight size={16} /></button>
-      </div>
     </div>
   );
 }
@@ -1533,80 +1679,106 @@ function FlashcardsMode({ progress, markCase }) {
 // =====================================================================
 // MCQ QUIZ — cases (all/by category) + optional all-content concept Qs
 // =====================================================================
-function QuizMode() {
-  const [scope, setScope] = useState('all'); // 'all' cases | category | 'allcontent'
-  const buildPool = (s) => {
-    if (s === 'allcontent') return shuffleArr([...generateCaseQuestions(CASES), ...generateConceptQuestions()]);
-    const cases = s === 'all' ? CASES : CASES.filter(c => c.category === s);
-    return shuffleArr(generateCaseQuestions(cases));
+function QuizMode({ buried }) {
+  const [domain, setDomain] = useState('cases'); // cases | conlaw | insanity | basiclaw | all
+  const [catFilter, setCatFilter] = useState('all');
+
+  const buildPool = (d, cat) => {
+    if (d === 'cases') {
+      let cs = CASES.filter(c => !buried['case:' + c.id]);
+      if (CATEGORIES.includes(cat)) cs = cs.filter(c => c.category === cat);
+      return shuffleArr(generateCaseQuestions(cs));
+    }
+    if (d === 'conlaw') return shuffleArr(generateConLawQuestions(buried));
+    if (d === 'insanity') return shuffleArr(generateInsanityQuestions(buried));
+    if (d === 'basiclaw') return shuffleArr(generateBasicLawQuestions(buried));
+    return shuffleArr([
+      ...generateCaseQuestions(CASES.filter(c => !buried['case:' + c.id])),
+      ...generateConLawQuestions(buried), ...generateInsanityQuestions(buried), ...generateBasicLawQuestions(buried),
+    ]);
   };
-  const [questions, setQuestions] = useState(() => buildPool('all'));
+
+  const [questions, setQuestions] = useState(() => buildPool('cases', 'all'));
   const [idx, setIdx] = useState(0);
   const [selected, setSelected] = useState(null);
   const [answered, setAnswered] = useState(false);
   const [score, setScore] = useState({ correct: 0, total: 0 });
 
+  const domains = [
+    { id: 'cases', label: 'Cases' },
+    { id: 'conlaw', label: 'Con Law' },
+    { id: 'insanity', label: 'Insanity' },
+    { id: 'basiclaw', label: 'Basic Law' },
+    { id: 'all', label: '★ Everything' },
+  ];
+
   const q = questions[idx];
   const submit = () => { if (selected === null) return; setAnswered(true); setScore(s => ({ correct: s.correct + (selected === q.correct ? 1 : 0), total: s.total + 1 })); };
   const next = () => { setSelected(null); setAnswered(false); setIdx(i => (i + 1) % questions.length); };
-  const reload = (s) => { setScope(s); setQuestions(buildPool(s)); setIdx(0); setSelected(null); setAnswered(false); setScore({ correct: 0, total: 0 }); };
-
-  if (!q) return <EmptyState message="No questions in this set." />;
+  const rebuild = (d, cat) => { setQuestions(buildPool(d, cat)); setIdx(0); setSelected(null); setAnswered(false); setScore({ correct: 0, total: 0 }); };
+  const pickDomain = (d) => { setDomain(d); setCatFilter('all'); rebuild(d, 'all'); };
 
   return (
     <div>
+      <SubTabs tabs={domains} active={domain} setActive={pickDomain} />
+
       <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center', marginBottom: 16 }}>
-        <select value={scope} onChange={(e) => reload(e.target.value)} style={selectStyle}>
-          <option value="all">All Cases ({CASES.length})</option>
-          <option value="allcontent">★ Everything (cases + amendments + insanity + terms)</option>
-          <optgroup label="Cases by Category">{CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}</optgroup>
-        </select>
-        <button onClick={() => reload(scope)} style={btnSecondary}><RotateCcw size={14} /> New set</button>
-      </div>
-
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20, flexWrap: 'wrap', gap: 8 }}>
-        <div style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 13, color: '#6b5d4a' }}>
-          Question {idx + 1} / {questions.length} <span style={{ color: '#8b6f3c' }}>· {scope === 'allcontent' ? 'full-content set' : 'covers every case in scope'}</span>
-        </div>
-        <div style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 13 }}>
-          Score: <span style={{ color: '#3d6b3a', fontWeight: 600 }}>{score.correct}</span><span style={{ color: '#6b5d4a' }}> / {score.total}</span>
-          {score.total > 0 && <span style={{ marginLeft: 8, color: '#1a3a5c' }}>({Math.round(100 * score.correct / score.total)}%)</span>}
-        </div>
-      </div>
-
-      <div style={cardStyle}>
-        <h3 style={{ fontFamily: "'Fraunces', serif", fontSize: 21, fontWeight: 500, margin: '0 0 22px 0', color: '#1a3a5c', lineHeight: 1.4, whiteSpace: 'pre-line' }}>{q.q}</h3>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-          {q.options.map((opt, i) => {
-            const isSelected = selected === i, isCorrect = i === q.correct;
-            let bg = '#faf6ec', border = '#c4b594', color = '#2a2520';
-            if (answered) { if (isCorrect) { bg = '#e8f0e3'; border = '#3d6b3a'; color = '#244821'; } else if (isSelected) { bg = '#f5e0e0'; border = '#8b2c2c'; color = '#5e1e1e'; } }
-            else if (isSelected) { bg = '#fbf7ed'; border = '#1a3a5c'; }
-            return (
-              <button key={i} onClick={() => !answered && setSelected(i)} disabled={answered}
-                style={{ textAlign: 'left', padding: '14px 16px', background: bg, border: `1.5px solid ${border}`, color, fontFamily: "'Source Serif Pro', Georgia, serif", fontSize: 15, lineHeight: 1.5, borderRadius: 4, cursor: answered ? 'default' : 'pointer', display: 'flex', alignItems: 'flex-start', gap: 12 }}>
-                <span style={{ flexShrink: 0, width: 26, height: 26, borderRadius: '50%', border: `1.5px solid ${border}`, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: 13, fontWeight: 600, background: answered && isCorrect ? '#3d6b3a' : (answered && isSelected ? '#8b2c2c' : 'transparent'), color: answered && (isCorrect || isSelected) ? '#fff' : border, fontFamily: "'JetBrains Mono', monospace" }}>
-                  {answered ? (isCorrect ? <Check size={14} /> : (isSelected ? <X size={14} /> : String.fromCharCode(65 + i))) : String.fromCharCode(65 + i)}
-                </span>
-                <span>{opt}</span>
-              </button>
-            );
-          })}
-        </div>
-        {answered && (
-          <div style={{ marginTop: 20, padding: 16, background: '#fbf7ed', borderLeft: '3px solid #8b6f3c', borderRadius: 2 }}>
-            <div style={{ fontSize: 10, letterSpacing: '0.2em', textTransform: 'uppercase', color: '#8b6f3c', fontWeight: 600, marginBottom: 6 }}>Explanation</div>
-            <div style={{ fontSize: 14, lineHeight: 1.6, fontFamily: "'Source Serif Pro', Georgia, serif", color: '#2a2520' }}>{q.explanation}</div>
-          </div>
+        {domain === 'cases' && (
+          <select value={catFilter} onChange={(e) => { setCatFilter(e.target.value); rebuild('cases', e.target.value); }} style={selectStyle}>
+            <option value="all">All Cases</option>
+            <optgroup label="By Category">{CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}</optgroup>
+          </select>
         )}
+        <button onClick={() => rebuild(domain, catFilter)} style={btnSecondary}><RotateCcw size={14} /> New set</button>
       </div>
 
-      <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 18 }}>
-        <button onClick={next} style={btnSecondary}>Skip <ChevronRight size={14} /></button>
-        {!answered
-          ? <button onClick={submit} disabled={selected === null} style={selected === null ? btnDisabled : btnPrimary}>Submit answer</button>
-          : <button onClick={next} style={btnPrimary}>Next question <ChevronRight size={16} /></button>}
-      </div>
+      {!q ? <EmptyState message="No questions in this set — everything here may be buried." /> : (
+        <>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20, flexWrap: 'wrap', gap: 8 }}>
+            <div style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 13, color: '#6e6757' }}>
+              Question {idx + 1} / {questions.length}
+            </div>
+            <div style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 13 }}>
+              Score: <span style={{ color: '#34602f', fontWeight: 600 }}>{score.correct}</span><span style={{ color: '#6e6757' }}> / {score.total}</span>
+              {score.total > 0 && <span style={{ marginLeft: 8, color: '#2b3742' }}>({Math.round(100 * score.correct / score.total)}%)</span>}
+            </div>
+          </div>
+
+          <div style={cardStyle}>
+            <h3 style={{ fontFamily: "'Fraunces', serif", fontSize: 21, fontWeight: 500, margin: '0 0 22px 0', color: '#2b3742', lineHeight: 1.4, whiteSpace: 'pre-line' }}>{q.q}</h3>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+              {q.options.map((opt, i) => {
+                const isSelected = selected === i, isCorrect = i === q.correct;
+                let bg = '#f5f2ea', border = '#cfc8b8', color = '#283038';
+                if (answered) { if (isCorrect) { bg = '#e2ecde'; border = '#34602f'; color = '#2c5226'; } else if (isSelected) { bg = '#f3dede'; border = '#8b2c2c'; color = '#5e1e1e'; } }
+                else if (isSelected) { bg = '#f5f2ea'; border = '#2b3742'; }
+                return (
+                  <button key={i} onClick={() => !answered && setSelected(i)} disabled={answered}
+                    style={{ textAlign: 'left', padding: '14px 16px', background: bg, border: `1.5px solid ${border}`, color, fontFamily: "'Source Serif Pro', Georgia, serif", fontSize: 15, lineHeight: 1.5, borderRadius: 4, cursor: answered ? 'default' : 'pointer', display: 'flex', alignItems: 'flex-start', gap: 12 }}>
+                    <span style={{ flexShrink: 0, width: 26, height: 26, borderRadius: '50%', border: `1.5px solid ${border}`, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: 13, fontWeight: 600, background: answered && isCorrect ? '#34602f' : (answered && isSelected ? '#8b2c2c' : 'transparent'), color: answered && (isCorrect || isSelected) ? '#fff' : border, fontFamily: "'JetBrains Mono', monospace" }}>
+                      {answered ? (isCorrect ? <Check size={14} /> : (isSelected ? <X size={14} /> : String.fromCharCode(65 + i))) : String.fromCharCode(65 + i)}
+                    </span>
+                    <span>{opt}</span>
+                  </button>
+                );
+              })}
+            </div>
+            {answered && (
+              <div style={{ marginTop: 20, padding: 16, background: '#f5f2ea', borderLeft: '3px solid #7c2d2d', borderRadius: 2 }}>
+                <div style={{ fontSize: 10, letterSpacing: '0.2em', textTransform: 'uppercase', color: '#7c2d2d', fontWeight: 600, marginBottom: 6 }}>Explanation</div>
+                <div style={{ fontSize: 14, lineHeight: 1.6, fontFamily: "'Source Serif Pro', Georgia, serif", color: '#283038' }}>{q.explanation}</div>
+              </div>
+            )}
+          </div>
+
+          <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 18 }}>
+            <button onClick={next} style={btnSecondary}>Skip <ChevronRight size={14} /></button>
+            {!answered
+              ? <button onClick={submit} disabled={selected === null} style={selected === null ? btnDisabled : btnPrimary}>Submit answer</button>
+              : <button onClick={next} style={btnPrimary}>Next question <ChevronRight size={16} /></button>}
+          </div>
+        </>
+      )}
     </div>
   );
 }
@@ -1614,7 +1786,7 @@ function QuizMode() {
 // =====================================================================
 // PROGRESS DASHBOARD
 // =====================================================================
-function ProgressMode({ progress, resetProgress }) {
+function ProgressMode({ progress, resetProgress, buried, toggleBury, unburyAll }) {
   const stats = {
     mastered: Object.values(progress).filter(v => v === 'mastered').length,
     reviewing: Object.values(progress).filter(v => v === 'reviewing').length,
@@ -1632,24 +1804,24 @@ function ProgressMode({ progress, resetProgress }) {
   return (
     <div>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: 12, marginBottom: 28 }}>
-        <BigStat label="Mastered" value={stats.mastered} color="#3d6b3a" />
-        <BigStat label="Reviewing" value={stats.reviewing} color="#a06530" />
+        <BigStat label="Mastered" value={stats.mastered} color="#34602f" />
+        <BigStat label="Reviewing" value={stats.reviewing} color="#8a5a1c" />
         <BigStat label="Missed" value={stats.unknown} color="#8b2c2c" />
-        <BigStat label="Untouched" value={stats.untouched} color="#6b5d4a" />
+        <BigStat label="Untouched" value={stats.untouched} color="#6e6757" />
       </div>
 
-      <h3 style={{ fontFamily: "'Fraunces', serif", fontSize: 22, fontStyle: 'italic', fontWeight: 500, color: '#1a3a5c', margin: '24px 0 14px 0' }}>Progress by category</h3>
+      <h3 style={{ fontFamily: "'Fraunces', serif", fontSize: 22, fontStyle: 'italic', fontWeight: 500, color: '#2b3742', margin: '24px 0 14px 0' }}>Progress by category</h3>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
         {Object.entries(byCategory).map(([cat, s]) => {
           const pct = (s.mastered / s.total) * 100;
           return (
-            <div key={cat} style={{ background: '#faf6ec', padding: '12px 16px', border: '1px solid #e3d7bc', borderRadius: 3 }}>
+            <div key={cat} style={{ background: '#f5f2ea', padding: '12px 16px', border: '1px solid #e6e1d5', borderRadius: 3 }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6 }}>
-                <span style={{ fontFamily: "'Fraunces', serif", fontSize: 15, fontStyle: 'italic', color: '#1a3a5c' }}>{cat}</span>
-                <span style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 12, color: '#6b5d4a' }}>{s.mastered} / {s.total}</span>
+                <span style={{ fontFamily: "'Fraunces', serif", fontSize: 15, fontStyle: 'italic', color: '#2b3742' }}>{cat}</span>
+                <span style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 12, color: '#6e6757' }}>{s.mastered} / {s.total}</span>
               </div>
-              <div style={{ height: 6, background: '#e3d7bc', borderRadius: 3, overflow: 'hidden' }}>
-                <div style={{ width: `${pct}%`, height: '100%', background: 'linear-gradient(90deg, #3d6b3a, #5a8a55)', transition: 'width 0.3s' }} />
+              <div style={{ height: 6, background: '#e6e1d5', borderRadius: 3, overflow: 'hidden' }}>
+                <div style={{ width: `${pct}%`, height: '100%', background: 'linear-gradient(90deg, #34602f, #4f7d45)', transition: 'width 0.3s' }} />
               </div>
             </div>
           );
@@ -1658,16 +1830,45 @@ function ProgressMode({ progress, resetProgress }) {
 
       {needsReview.length > 0 && (
         <>
-          <h3 style={{ fontFamily: "'Fraunces', serif", fontSize: 22, fontStyle: 'italic', fontWeight: 500, color: '#1a3a5c', margin: '32px 0 14px 0' }}>Cases flagged for review ({needsReview.length})</h3>
+          <h3 style={{ fontFamily: "'Fraunces', serif", fontSize: 22, fontStyle: 'italic', fontWeight: 500, color: '#2b3742', margin: '32px 0 14px 0' }}>Cases flagged for review ({needsReview.length})</h3>
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
             {needsReview.map(c => (
-              <span key={c.id} style={{ padding: '6px 12px', background: progress[c.id] === 'unknown' ? '#f5e0e0' : '#f8ead4', border: `1px solid ${progress[c.id] === 'unknown' ? '#8b2c2c' : '#a06530'}`, borderRadius: 3, fontSize: 13, fontFamily: "'Fraunces', serif", fontStyle: 'italic', color: progress[c.id] === 'unknown' ? '#5e1e1e' : '#5c3b15' }}>{c.name}</span>
+              <span key={c.id} style={{ padding: '6px 12px', background: progress[c.id] === 'unknown' ? '#f3dede' : '#f6e9e6', border: `1px solid ${progress[c.id] === 'unknown' ? '#8b2c2c' : '#8a5a1c'}`, borderRadius: 3, fontSize: 13, fontFamily: "'Fraunces', serif", fontStyle: 'italic', color: progress[c.id] === 'unknown' ? '#5e1e1e' : '#6e2626' }}>{c.name}</span>
             ))}
           </div>
         </>
       )}
 
-      <div style={{ marginTop: 36, paddingTop: 20, borderTop: '1px solid #d4c5a8' }}>
+      {Object.keys(buried || {}).length > 0 && (() => {
+        const labelFor = (key) => {
+          const [kind, id] = key.split(':');
+          if (kind === 'case') return (CASES.find(c => c.id === id) || {}).name || key;
+          if (kind === 'amend') return `${id} Amendment`;
+          if (kind === 'conlaw') return (CONLAW_CONCEPTS.find(c => c.id === id) || {}).title || key;
+          if (kind === 'itest') return (INSANITY_TESTS.find(t => t.id === id) || {}).name || key;
+          if (kind === 'idra') return (IDRA_PROVISIONS[+id] || {}).h || key;
+          if (kind === 'basic') return (BASIC_LAW.find(c => c.id === id) || {}).title || key;
+          return key;
+        };
+        const keys = Object.keys(buried);
+        return (
+          <>
+            <h3 style={{ fontFamily: "'Fraunces', serif", fontSize: 22, fontStyle: 'italic', fontWeight: 500, color: '#2b3742', margin: '32px 0 6px 0' }}>Buried — hidden from study sets ({keys.length})</h3>
+            <p style={{ fontSize: 13, color: '#6e6757', margin: '0 0 14px 0', fontFamily: "'Source Serif Pro', Georgia, serif" }}>These are skipped in Oral Sim, Flashcards, and the MCQ quiz. Click any to bring it back.</p>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 8 }}>
+              {keys.map(k => (
+                <button key={k} onClick={() => toggleBury(k)} title="Restore"
+                  style={{ padding: '6px 12px', background: '#e2ecde', border: '1px solid #cde0c6', borderRadius: 3, fontSize: 13, fontFamily: "'Fraunces', serif", fontStyle: 'italic', color: '#34602f', display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                  <RotateCcw size={12} /> {labelFor(k)}
+                </button>
+              ))}
+            </div>
+            <button onClick={() => { if (confirm('Restore all buried items?')) unburyAll(); }} style={btnGhost}>Restore all</button>
+          </>
+        );
+      })()}
+
+      <div style={{ marginTop: 36, paddingTop: 20, borderTop: '1px solid #dcd6c8' }}>
         <button onClick={() => { if (confirm('Reset all progress? This cannot be undone.')) resetProgress(); }} style={{ ...btnSecondary, color: '#8b2c2c', borderColor: '#8b2c2c' }}>
           <RotateCcw size={14} /> Reset all progress
         </button>
@@ -1678,9 +1879,9 @@ function ProgressMode({ progress, resetProgress }) {
 
 function BigStat({ label, value, color }) {
   return (
-    <div style={{ background: '#faf6ec', border: '1px solid #e3d7bc', borderTop: `3px solid ${color}`, padding: 18, borderRadius: 3, textAlign: 'center' }}>
+    <div style={{ background: '#f5f2ea', border: '1px solid #e6e1d5', borderTop: `3px solid ${color}`, padding: 18, borderRadius: 3, textAlign: 'center' }}>
       <div style={{ fontSize: 38, fontWeight: 700, color, lineHeight: 1, fontFamily: "'Fraunces', serif" }}>{value}</div>
-      <div style={{ fontSize: 10, letterSpacing: '0.2em', textTransform: 'uppercase', color: '#6b5d4a', marginTop: 8 }}>{label}</div>
+      <div style={{ fontSize: 10, letterSpacing: '0.2em', textTransform: 'uppercase', color: '#6e6757', marginTop: 8 }}>{label}</div>
     </div>
   );
 }
@@ -1717,20 +1918,20 @@ function CountdownMode() {
 
   const Unit = ({ value, label }) => (
     <div style={{ textAlign: 'center', minWidth: 92 }}>
-      <div style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 56, fontWeight: 500, color: '#fffdf6', lineHeight: 1, letterSpacing: '-0.02em' }}>
+      <div style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 56, fontWeight: 500, color: '#ffffff', lineHeight: 1, letterSpacing: '-0.02em' }}>
         {String(value).padStart(2, '0')}
       </div>
-      <div style={{ fontSize: 11, letterSpacing: '0.25em', textTransform: 'uppercase', color: '#bcae8f', marginTop: 10 }}>{label}</div>
+      <div style={{ fontSize: 11, letterSpacing: '0.25em', textTransform: 'uppercase', color: '#b9b2a0', marginTop: 10 }}>{label}</div>
     </div>
   );
 
   return (
     <div>
-      <div style={{ background: 'linear-gradient(135deg, #1a3a5c 0%, #14293f 100%)', borderRadius: 8, padding: '40px 28px', textAlign: 'center', boxShadow: '0 8px 30px rgba(20,41,63,0.25)' }}>
-        <div style={{ fontSize: 11, letterSpacing: '0.3em', textTransform: 'uppercase', color: '#8fb0cc', marginBottom: 6 }}>
+      <div style={{ background: 'linear-gradient(135deg, #2b3742 0%, #1c252c 100%)', borderRadius: 8, padding: '40px 28px', textAlign: 'center', boxShadow: '0 8px 30px rgba(20,41,63,0.25)' }}>
+        <div style={{ fontSize: 11, letterSpacing: '0.3em', textTransform: 'uppercase', color: '#9fb0bb', marginBottom: 6 }}>
           {past ? 'The day is here' : 'Time until the Landmark Final Exam'}
         </div>
-        <div style={{ fontFamily: "'Fraunces', serif", fontStyle: 'italic', fontSize: 22, color: '#fffdf6', marginBottom: 28 }}>
+        <div style={{ fontFamily: "'Fraunces', serif", fontStyle: 'italic', fontSize: 22, color: '#ffffff', marginBottom: 28 }}>
           Monday, June 8, 2026 · 8:00 AM
         </div>
 
@@ -1744,19 +1945,19 @@ function CountdownMode() {
           <div style={{ animation: 'pulse 1s infinite' }}><Unit value={secs} label="Seconds" /></div>
         </div>
 
-        {past && <div style={{ marginTop: 20, fontFamily: "'JetBrains Mono', monospace", fontSize: 12, color: '#8fb0cc' }}>(elapsed since start)</div>}
+        {past && <div style={{ marginTop: 20, fontFamily: "'JetBrains Mono', monospace", fontSize: 12, color: '#9fb0bb' }}>(elapsed since start)</div>}
       </div>
 
       <div style={{ ...cardStyle, marginTop: 18, textAlign: 'center' }}>
-        <Sparkles size={22} style={{ color: '#8b6f3c', margin: '0 auto 8px', display: 'block' }} />
-        <p style={{ fontFamily: "'Fraunces', serif", fontStyle: 'italic', fontSize: 19, color: '#1a3a5c', margin: '0 0 6px 0' }}>{line}</p>
+        <Sparkles size={22} style={{ color: '#7c2d2d', margin: '0 auto 8px', display: 'block' }} />
+        <p style={{ fontFamily: "'Fraunces', serif", fontStyle: 'italic', fontSize: 19, color: '#2b3742', margin: '0 0 6px 0' }}>{line}</p>
         {!past && (
           <>
-            <div style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 12.5, color: '#6b5d4a', marginBottom: 12 }}>
+            <div style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 12.5, color: '#6e6757', marginBottom: 12 }}>
               {days} days · {hours} hrs · {mins} min · {secs} sec to go
             </div>
-            <div style={{ height: 8, background: '#e3d7bc', borderRadius: 4, overflow: 'hidden', maxWidth: 460, margin: '0 auto' }}>
-              <div style={{ width: `${pct}%`, height: '100%', background: 'linear-gradient(90deg, #8b6f3c, #b9924f)', transition: 'width 0.5s' }} />
+            <div style={{ height: 8, background: '#e6e1d5', borderRadius: 4, overflow: 'hidden', maxWidth: 460, margin: '0 auto' }}>
+              <div style={{ width: `${pct}%`, height: '100%', background: 'linear-gradient(90deg, #7c2d2d, #9a3a3a)', transition: 'width 0.5s' }} />
             </div>
           </>
         )}
@@ -1766,24 +1967,51 @@ function CountdownMode() {
 }
 
 function Separator() {
-  return <div style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 48, color: '#3d5a78', lineHeight: 1, alignSelf: 'flex-start', marginTop: 2 }}>:</div>;
+  return <div style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 48, color: '#4a5a66', lineHeight: 1, alignSelf: 'flex-start', marginTop: 2 }}>:</div>;
 }
 
 // =====================================================================
 // UTILITIES + SHARED STYLES
 // =====================================================================
+function BuryButton({ buried, onClick, label = 'Bury' }) {
+  return (
+    <button onClick={onClick} style={{ ...btnGhost, color: buried ? '#34602f' : '#7c2d2d', borderColor: buried ? '#cde0c6' : '#e0bdb8', background: buried ? '#e2ecde' : 'transparent' }}
+      title={buried ? 'Bring this back into your study sets' : 'Hide this from study sets'}>
+      {buried ? <><RotateCcw size={12} /> Buried — restore</> : <><X size={12} /> {label}</>}
+    </button>
+  );
+}
+
+function SubTabs({ tabs, active, setActive }) {
+  return (
+    <div style={{ display: 'inline-flex', gap: 4, padding: 4, background: '#f5f2ea', border: '1px solid #e6e1d5', borderRadius: 6, marginBottom: 20, flexWrap: 'wrap' }}>
+      {tabs.map(t => {
+        const on = active === t.id;
+        return (
+          <button key={t.id} onClick={() => setActive(t.id)}
+            style={{ background: on ? '#2b3742' : 'transparent', color: on ? '#fff' : '#4c5158', border: 'none',
+              padding: '7px 14px', fontSize: 13, fontFamily: "'Fraunces', serif", fontStyle: on ? 'italic' : 'normal',
+              fontWeight: on ? 600 : 400, borderRadius: 4 }}>
+            {t.label}{t.count != null && <span style={{ opacity: 0.7, marginLeft: 6, fontFamily: "'JetBrains Mono', monospace", fontSize: 11 }}>{t.count}</span>}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
 function EmptyState({ message }) {
   return (
     <div style={{ ...cardStyle, textAlign: 'center', padding: 60 }}>
-      <Sparkles size={32} style={{ color: '#8b6f3c', margin: '0 auto 12px', display: 'block' }} />
-      <p style={{ fontFamily: "'Fraunces', serif", fontStyle: 'italic', fontSize: 16, color: '#6b5d4a', margin: 0 }}>{message}</p>
+      <Sparkles size={32} style={{ color: '#7c2d2d', margin: '0 auto 12px', display: 'block' }} />
+      <p style={{ fontFamily: "'Fraunces', serif", fontStyle: 'italic', fontSize: 16, color: '#6e6757', margin: 0 }}>{message}</p>
     </div>
   );
 }
 
 const cardStyle = {
-  background: '#fffdf6',
-  border: '1px solid #d4c5a8',
+  background: '#ffffff',
+  border: '1px solid #dcd6c8',
   padding: 28,
   borderRadius: 4,
   boxShadow: '0 2px 12px rgba(26, 22, 18, 0.04), 0 1px 3px rgba(26, 22, 18, 0.06)',
@@ -1793,28 +2021,28 @@ const selectStyle = {
   padding: '8px 12px',
   fontFamily: 'inherit',
   fontSize: 13,
-  border: '1px solid #c4b594',
-  background: '#faf6ec',
-  color: '#1a1612',
+  border: '1px solid #cfc8b8',
+  background: '#f5f2ea',
+  color: '#232a31',
   borderRadius: 4,
 };
 
 const btnPrimary = {
-  background: '#1a3a5c', color: '#fffdf6', border: '1.5px solid #1a3a5c',
+  background: '#2b3742', color: '#ffffff', border: '1.5px solid #2b3742',
   padding: '9px 16px', fontSize: 14, fontFamily: "'Fraunces', serif", fontStyle: 'italic',
   borderRadius: 3, display: 'inline-flex', alignItems: 'center', gap: 6, transition: 'all 0.15s',
 };
 
 const btnSecondary = {
-  background: 'transparent', color: '#1a3a5c', border: '1.5px solid #1a3a5c',
+  background: 'transparent', color: '#2b3742', border: '1.5px solid #2b3742',
   padding: '9px 16px', fontSize: 14, fontFamily: "'Fraunces', serif",
   borderRadius: 3, display: 'inline-flex', alignItems: 'center', gap: 6, transition: 'all 0.15s',
 };
 
-const btnDisabled = { ...btnPrimary, background: '#c4b594', borderColor: '#c4b594', cursor: 'not-allowed' };
+const btnDisabled = { ...btnPrimary, background: '#cfc8b8', borderColor: '#cfc8b8', cursor: 'not-allowed' };
 
 const btnGhost = {
-  background: 'transparent', color: '#8b6f3c', border: '1px solid #c4b594',
+  background: 'transparent', color: '#7c2d2d', border: '1px solid #cfc8b8',
   padding: '6px 12px', fontSize: 12, fontFamily: 'inherit',
   borderRadius: 3, display: 'inline-flex', alignItems: 'center', gap: 5,
 };
