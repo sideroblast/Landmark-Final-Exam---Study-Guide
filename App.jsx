@@ -955,6 +955,30 @@ function generateBasicLawQuestions(buried = {}) {
 
 const CATEGORIES = [...new Set(CASES.map(c => c.category))];
 
+// ---- Case "basics" questions: category, court, year only ----
+function generateBasicsQuestions(kind, buried = {}) {
+  const cases = CASES.filter(c => !buried['case:' + c.id]);
+  const allYears = [...new Set(cases.map(c => c.year))];
+  const allCourts = [...new Set(cases.map(c => c.court))];
+  const sample = (arr, exclude, n) => shuffleArr(arr.filter(v => v !== exclude)).slice(0, n);
+  const qs = [];
+  for (const c of cases) {
+    if (kind === 'year' || kind === 'mixed') {
+      const { options, correct } = makeOptions(String(c.year), sample(allYears, c.year, 3).map(String));
+      qs.push({ q: `In what year was ${c.name} decided?`, options, correct, explanation: `${c.name} — ${c.court}, ${c.year}.` });
+    }
+    if (kind === 'court' || kind === 'mixed') {
+      const { options, correct } = makeOptions(c.court, sample(allCourts, c.court, 3));
+      qs.push({ q: `Which court decided ${c.name}?`, options, correct, explanation: `${c.name} was decided by ${c.court} (${c.year}).` });
+    }
+    if (kind === 'category' || kind === 'mixed') {
+      const { options, correct } = makeOptions(c.category, sample(CATEGORIES, c.category, 3));
+      qs.push({ q: `Which topic area does ${c.name} fall under?`, options, correct, explanation: `${c.name} is categorized under "${c.category}".` });
+    }
+  }
+  return shuffleArr(qs);
+}
+
 
 // =====================================================================
 // MAIN COMPONENT
@@ -985,9 +1009,9 @@ export default function App() {
   const unburyAll = () => saveBuried({});
 
   return (
-    <div style={{ fontFamily: "'Fraunces', 'Source Serif Pro', Georgia, serif", minHeight: '100vh', background: 'linear-gradient(180deg, #fcfbf8 0%, #f4f1ea 100%)', color: '#232a31' }}>
+    <div style={{ fontFamily: "'Aleo', 'Aleo', Georgia, serif", minHeight: '100vh', background: 'linear-gradient(180deg, #fcfbf8 0%, #f4f1ea 100%)', color: '#232a31' }}>
       <style>{`
-        @import url('https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,300..900&family=Source+Serif+Pro:wght@400;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
+        @import url('https://fonts.googleapis.com/css2?family=Aleo:ital,wght@0,400;0,500;0,700;0,800;0,900;1,400;1,500&family=IBM+Plex+Mono:wght@400;500;600;700&display=swap');
         * { box-sizing: border-box; }
         button { cursor: pointer; font-family: inherit; }
         @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.55; } }
@@ -997,7 +1021,7 @@ export default function App() {
         <header style={{ borderBottom: '2px solid #2b3742', paddingBottom: 20, marginBottom: 28, display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', flexWrap: 'wrap', gap: 12 }}>
           <div>
             <div style={{ fontSize: 11, letterSpacing: '0.25em', textTransform: 'uppercase', color: '#7c2d2d', marginBottom: 4 }}>UH / CWRU · Forensic Psychiatry</div>
-            <h1 style={{ fontFamily: "'Fraunces', serif", fontSize: 38, fontWeight: 600, fontStyle: 'italic', margin: 0, color: '#2b3742', letterSpacing: '-0.02em' }}>Landmark Final Exam <span style={{ fontStyle: 'normal', fontWeight: 400 }}>—</span> Study Guide</h1>
+            <h1 style={{ fontFamily: "'Aleo', serif", fontSize: 38, fontWeight: 800, fontStyle: 'normal', margin: 0, color: '#2b3742', letterSpacing: '-0.02em' }}>Landmark Final Exam <span style={{ fontWeight: 400, color: '#7c2d2d' }}>—</span> Study Guide</h1>
           </div>
           <ProgressBadge progress={progress} total={CASES.length} />
         </header>
@@ -1013,6 +1037,7 @@ export default function App() {
           {mode === 'terms' && <TermsMode />}
           {mode === 'flashcards' && <FlashcardsMode progress={progress} markCase={markCase} buried={buried} toggleBury={toggleBury} />}
           {mode === 'quiz' && <QuizMode buried={buried} />}
+          {mode === 'basics' && <CaseBasicsMode buried={buried} />}
           {mode === 'progress' && <ProgressMode progress={progress} resetProgress={resetProgress} buried={buried} toggleBury={toggleBury} unburyAll={unburyAll} />}
           {mode === 'countdown' && <CountdownMode />}
         </main>
@@ -1032,7 +1057,7 @@ function ProgressBadge({ progress, total }) {
   const mastered = Object.values(progress).filter(v => v === 'mastered').length;
   const reviewing = Object.values(progress).filter(v => v === 'reviewing').length;
   return (
-    <div style={{ display: 'flex', gap: 14, fontFamily: "'JetBrains Mono', monospace", fontSize: 12 }}>
+    <div style={{ display: 'flex', gap: 14, fontFamily: "'IBM Plex Mono', monospace", fontSize: 12 }}>
       <Stat label="Mastered" value={mastered} color="#34602f" />
       <Stat label="Reviewing" value={reviewing} color="#8a5a1c" />
       <Stat label="Cases" value={total} color="#2b3742" />
@@ -1061,6 +1086,7 @@ function ModeTabs({ mode, setMode }) {
     { id: 'terms', label: 'Legal Terms', icon: Scale },
     { id: 'flashcards', label: 'Flashcards', icon: Layers },
     { id: 'quiz', label: 'MCQ Quiz', icon: ListChecks },
+    { id: 'basics', label: 'Case Basics', icon: Map },
     { id: 'progress', label: 'Progress', icon: BarChart3 },
     { id: 'countdown', label: 'Countdown', icon: CalendarClock },
   ];
@@ -1072,7 +1098,7 @@ function ModeTabs({ mode, setMode }) {
           <button key={t.id} onClick={() => setMode(t.id)}
             style={{ background: 'none', border: 'none', padding: '12px 16px',
               borderBottom: active ? '3px solid #2b3742' : '3px solid transparent',
-              color: active ? '#2b3742' : '#6e6757', fontFamily: "'Fraunces', serif",
+              color: active ? '#2b3742' : '#6e6757', fontFamily: "'Aleo', serif",
               fontSize: 14.5, fontWeight: active ? 600 : 400, fontStyle: active ? 'italic' : 'normal',
               display: 'inline-flex', alignItems: 'center', gap: 7, transition: 'all 0.2s', marginBottom: -1 }}>
             <Icon size={15} strokeWidth={1.5} /> {t.label}
@@ -1126,7 +1152,7 @@ function OralExamMode({ progress, markCase, buried, toggleBury }) {
           if (list.length === 0) return null;
           return (
             <section key={cat} style={{ marginBottom: 26 }}>
-              <h3 style={{ fontFamily: "'Fraunces', serif", fontSize: 20, fontStyle: 'italic', fontWeight: 500, color: '#2b3742', margin: '0 0 12px 0', borderBottom: '1px solid #dcd6c8', paddingBottom: 6 }}>
+              <h3 style={{ fontFamily: "'Aleo', serif", fontSize: 20, fontStyle: 'italic', fontWeight: 500, color: '#2b3742', margin: '0 0 12px 0', borderBottom: '1px solid #dcd6c8', paddingBottom: 6 }}>
                 {cat} <span style={{ fontSize: 12, fontStyle: 'normal', color: '#7c2d2d' }}>· {list.length} cases</span>
               </h3>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 0, position: 'relative', paddingLeft: 18 }}>
@@ -1134,8 +1160,8 @@ function OralExamMode({ progress, markCase, buried, toggleBury }) {
                 {list.map(c => (
                   <div key={c.id} style={{ display: 'flex', alignItems: 'baseline', gap: 12, padding: '7px 0', position: 'relative' }}>
                     <div style={{ position: 'absolute', left: -18, top: 12, width: 9, height: 9, borderRadius: '50%', background: '#2b3742', border: '2px solid #fcfbf8' }} />
-                    <span style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 13, color: '#7c2d2d', fontWeight: 500, minWidth: 42 }}>{c.year}</span>
-                    <span style={{ fontFamily: "'Fraunces', serif", fontSize: 16, fontStyle: 'italic', color: '#2b3742' }}>{c.name}</span>
+                    <span style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 13, color: '#7c2d2d', fontWeight: 500, minWidth: 42 }}>{c.year}</span>
+                    <span style={{ fontFamily: "'Aleo', serif", fontSize: 16, fontStyle: 'normal', fontWeight: 700, color: '#2b3742' }}>{c.name}</span>
                     <span style={{ fontSize: 12, color: '#6e6757' }}>· {c.court}</span>
                   </div>
                 ))}
@@ -1172,12 +1198,13 @@ function OralExamMode({ progress, markCase, buried, toggleBury }) {
         {!chronological && (
           <button onClick={() => { setShuffleSeed(Math.random() * 10000); setIdx(0); reset(); }} style={btnSecondary}><Shuffle size={14} /> Shuffle</button>
         )}
-        <div style={{ marginLeft: 'auto', fontFamily: "'JetBrains Mono', monospace", fontSize: 12, color: '#6e6757' }}>{idx + 1} / {pool.length}</div>
+        <div style={{ marginLeft: 'auto', fontFamily: "'IBM Plex Mono', monospace", fontSize: 12, color: '#6e6757' }}>{idx + 1} / {pool.length}</div>
       </div>
 
       <div style={cardStyle}>
         <div style={{ fontSize: 10, letterSpacing: '0.25em', textTransform: 'uppercase', color: '#7c2d2d', marginBottom: 8 }}>Examiner says…</div>
-        <h2 style={{ fontFamily: "'Fraunces', serif", fontSize: 28, fontWeight: 500, fontStyle: 'italic', margin: '0 0 4px 0', color: '#2b3742' }}>"Tell me about {current.name}."</h2>
+        <div style={{ fontFamily: "'Aleo', serif", fontSize: 19, fontWeight: 400, fontStyle: 'italic', color: '#4c5158', margin: '0 0 4px 0' }}>"Tell me about…"</div>
+        <h2 style={{ fontFamily: "'Aleo', serif", fontSize: 36, fontWeight: 800, fontStyle: 'normal', margin: '0 0 4px 0', color: '#2b3742', lineHeight: 1.12, letterSpacing: '-0.01em' }}>{current.name}</h2>
         <div style={{ fontSize: 13, color: '#6e6757', marginBottom: 8 }}><em>{current.category}</em></div>
 
         <div style={{ borderTop: '1px solid #e6e1d5', paddingTop: 16, marginTop: 12 }}>
@@ -1229,7 +1256,7 @@ function ViewToggle({ view, setView }) {
       {[{ id: 'drill', label: 'Examiner Drill', icon: Mic }, { id: 'map', label: 'Category Map', icon: Map }].map(t => {
         const Icon = t.icon; const active = view === t.id;
         return (
-          <button key={t.id} onClick={() => setView(t.id)} style={{ padding: '8px 16px', border: 'none', background: active ? '#2b3742' : 'transparent', color: active ? '#ffffff' : '#2b3742', fontFamily: "'Fraunces', serif", fontStyle: active ? 'italic' : 'normal', fontSize: 14, display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+          <button key={t.id} onClick={() => setView(t.id)} style={{ padding: '8px 16px', border: 'none', background: active ? '#2b3742' : 'transparent', color: active ? '#ffffff' : '#2b3742', fontFamily: "'Aleo', serif", fontStyle: active ? 'italic' : 'normal', fontSize: 14, display: 'inline-flex', alignItems: 'center', gap: 6 }}>
             <Icon size={14} /> {t.label}
           </button>
         );
@@ -1245,7 +1272,7 @@ function RevealSection({ label, content, revealed, onReveal, highlight }) {
         <div style={{ fontSize: 11, letterSpacing: '0.15em', textTransform: 'uppercase', color: '#7c2d2d', fontWeight: 600 }}>{label}</div>
         {!revealed && (<button onClick={onReveal} style={{ ...btnGhost, padding: '4px 10px', fontSize: 12 }}><Eye size={12} /> Reveal</button>)}
       </div>
-      {revealed && (<div style={{ fontSize: 15, lineHeight: 1.65, color: '#283038', fontFamily: "'Source Serif Pro', Georgia, serif" }}>{content}</div>)}
+      {revealed && (<div style={{ fontSize: 15, lineHeight: 1.65, color: '#283038', fontFamily: "'Aleo', Georgia, serif" }}>{content}</div>)}
     </div>
   );
 }
@@ -1291,7 +1318,7 @@ function BrowseMode({ progress, buried, toggleBury }) {
 
       {Object.entries(grouped).map(([cat, list]) => (
         <section key={cat} style={{ marginBottom: 32 }}>
-          <h3 style={{ fontFamily: "'Fraunces', serif", fontSize: 22, fontStyle: 'italic', fontWeight: 500, color: '#2b3742', margin: '0 0 14px 0', borderBottom: '1px solid #dcd6c8', paddingBottom: 8 }}>{cat}</h3>
+          <h3 style={{ fontFamily: "'Aleo', serif", fontSize: 22, fontStyle: 'italic', fontWeight: 500, color: '#2b3742', margin: '0 0 14px 0', borderBottom: '1px solid #dcd6c8', paddingBottom: 8 }}>{cat}</h3>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
             {[...list].sort((a, b) => a.year - b.year).map(c => {
               const open = openId === c.id;
@@ -1302,14 +1329,14 @@ function BrowseMode({ progress, buried, toggleBury }) {
                 <div key={c.id} style={{ background: '#f5f2ea', border: '1px solid #e6e1d5', borderLeft: statusColor ? `4px solid ${statusColor}` : '4px solid #e6e1d5', borderRadius: 3, overflow: 'hidden', opacity: isBuried ? 0.55 : 1 }}>
                   <button onClick={() => setOpenId(open ? null : c.id)} style={{ width: '100%', background: 'none', border: 'none', padding: '12px 16px', textAlign: 'left', display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontFamily: 'inherit' }}>
                     <span>
-                      <span style={{ fontFamily: "'Fraunces', serif", fontSize: 17, fontStyle: 'italic', color: '#2b3742', fontWeight: 500 }}>{c.name}</span>
+                      <span style={{ fontFamily: "'Aleo', serif", fontSize: 18.5, fontStyle: 'normal', color: '#2b3742', fontWeight: 800 }}>{c.name}</span>
                       <span style={{ fontSize: 12, color: '#6e6757', marginLeft: 10 }}>({c.year}, {c.court})</span>
                       {isBuried && <span style={{ fontSize: 11, color: '#34602f', marginLeft: 8 }}>· buried</span>}
                     </span>
                     <ChevronRight size={16} style={{ color: '#7c2d2d', transform: open ? 'rotate(90deg)' : 'rotate(0)', transition: 'transform 0.2s' }} />
                   </button>
                   {open && (
-                    <div style={{ padding: '0 16px 16px 16px', fontFamily: "'Source Serif Pro', Georgia, serif", fontSize: 14, lineHeight: 1.6 }}>
+                    <div style={{ padding: '0 16px 16px 16px', fontFamily: "'Aleo', Georgia, serif", fontSize: 14, lineHeight: 1.6 }}>
                       <DetailRow label="Facts" content={c.facts} />
                       <DetailRow label="Issue" content={c.issue} />
                       <DetailRow label="Holding" content={c.holding} highlight />
@@ -1360,13 +1387,13 @@ function ConLawMode({ buried, toggleBury }) {
             <div key={a.num} style={{ background: '#f5f2ea', border: '1px solid #e6e1d5', borderLeft: '4px solid #2b3742', borderRadius: 3, overflow: 'hidden', opacity: isBuried ? 0.55 : 1 }}>
               <button onClick={() => setOpen(isOpen ? null : a.num)} style={{ width: '100%', background: 'none', border: 'none', padding: '12px 16px', textAlign: 'left', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, fontFamily: 'inherit' }}>
                 <span style={{ display: 'flex', alignItems: 'baseline', gap: 12 }}>
-                  <span style={{ fontFamily: "'Fraunces', serif", fontSize: 19, fontStyle: 'italic', fontWeight: 600, color: '#2b3742', minWidth: 46 }}>{a.num}</span>
-                  <span style={{ fontFamily: "'Source Serif Pro', Georgia, serif", fontSize: 15, color: '#283038' }}>{a.short}{isBuried && <span style={{ fontSize: 11, color: '#34602f', marginLeft: 8 }}>· buried</span>}</span>
+                  <span style={{ fontFamily: "'Aleo', serif", fontSize: 19, fontStyle: 'italic', fontWeight: 600, color: '#2b3742', minWidth: 46 }}>{a.num}</span>
+                  <span style={{ fontFamily: "'Aleo', Georgia, serif", fontSize: 15, color: '#283038' }}>{a.short}{isBuried && <span style={{ fontSize: 11, color: '#34602f', marginLeft: 8 }}>· buried</span>}</span>
                 </span>
                 <ChevronRight size={16} style={{ color: '#7c2d2d', flexShrink: 0, transform: isOpen ? 'rotate(90deg)' : 'rotate(0)', transition: 'transform 0.2s' }} />
               </button>
               {isOpen && (
-                <div style={{ padding: '0 16px 16px 74px', fontFamily: "'Source Serif Pro', Georgia, serif", fontSize: 14, lineHeight: 1.6, color: '#283038' }}>
+                <div style={{ padding: '0 16px 16px 74px', fontFamily: "'Aleo', Georgia, serif", fontSize: 14, lineHeight: 1.6, color: '#283038' }}>
                   <p style={{ margin: '0 0 10px 0' }}>{a.detail}</p>
                   <div style={{ fontSize: 13, color: '#6e2626', background: '#f6e9e6', border: '1px solid #e0bdb8', borderRadius: 3, padding: '7px 11px', marginBottom: 12 }}>
                     <strong style={{ letterSpacing: '0.04em' }}>Incorporation:</strong> {a.incorp}
@@ -1385,9 +1412,9 @@ function ConLawMode({ buried, toggleBury }) {
           const isBuried = !!buried['conlaw:' + c.id];
           return (
             <div key={c.id} style={{ ...cardStyle, opacity: isBuried ? 0.55 : 1 }}>
-              <h3 style={{ fontFamily: "'Fraunces', serif", fontSize: 20, fontStyle: 'italic', fontWeight: 500, color: '#2b3742', margin: '0 0 8px 0' }}>{c.title}{isBuried && <span style={{ fontSize: 11, fontStyle: 'normal', color: '#34602f', marginLeft: 8 }}>· buried</span>}</h3>
-              <p style={{ fontSize: 14.5, lineHeight: 1.65, color: '#283038', margin: '0 0 12px 0', fontFamily: "'Source Serif Pro', Georgia, serif" }}>{c.body}</p>
-              <ul style={{ margin: '0 0 12px 0', paddingLeft: 20, fontFamily: "'Source Serif Pro', Georgia, serif", fontSize: 14, lineHeight: 1.7, color: '#3c4148' }}>
+              <h3 style={{ fontFamily: "'Aleo', serif", fontSize: 20, fontStyle: 'italic', fontWeight: 500, color: '#2b3742', margin: '0 0 8px 0' }}>{c.title}{isBuried && <span style={{ fontSize: 11, fontStyle: 'normal', color: '#34602f', marginLeft: 8 }}>· buried</span>}</h3>
+              <p style={{ fontSize: 14.5, lineHeight: 1.65, color: '#283038', margin: '0 0 12px 0', fontFamily: "'Aleo', Georgia, serif" }}>{c.body}</p>
+              <ul style={{ margin: '0 0 12px 0', paddingLeft: 20, fontFamily: "'Aleo', Georgia, serif", fontSize: 14, lineHeight: 1.7, color: '#3c4148' }}>
                 {c.points.map((p, i) => <li key={i}>{p}</li>)}
               </ul>
               <BuryButton buried={isBuried} onClick={() => toggleBury('conlaw:' + c.id)} />
@@ -1402,8 +1429,8 @@ function ConLawMode({ buried, toggleBury }) {
 function SectionHeader({ title, sub }) {
   return (
     <div style={{ marginBottom: 18 }}>
-      <h2 style={{ fontFamily: "'Fraunces', serif", fontSize: 26, fontStyle: 'italic', fontWeight: 500, color: '#2b3742', margin: '0 0 6px 0' }}>{title}</h2>
-      {sub && <p style={{ fontSize: 13.5, color: '#6e6757', lineHeight: 1.6, margin: 0, fontFamily: "'Source Serif Pro', Georgia, serif", maxWidth: 760 }}>{sub}</p>}
+      <h2 style={{ fontFamily: "'Aleo', serif", fontSize: 26, fontStyle: 'italic', fontWeight: 500, color: '#2b3742', margin: '0 0 6px 0' }}>{title}</h2>
+      {sub && <p style={{ fontSize: 13.5, color: '#6e6757', lineHeight: 1.6, margin: 0, fontFamily: "'Aleo', Georgia, serif", maxWidth: 760 }}>{sub}</p>}
     </div>
   );
 }
@@ -1418,14 +1445,14 @@ function InsanityMode({ buried, toggleBury }) {
 
       {/* Timeline summary table */}
       <div style={{ ...cardStyle, padding: 0, overflow: 'hidden', marginBottom: 28 }}>
-        <div style={{ display: 'grid', gridTemplateColumns: '120px 1fr 130px', background: '#2b3742', color: '#ffffff', fontSize: 11, letterSpacing: '0.12em', textTransform: 'uppercase', fontFamily: "'JetBrains Mono', monospace" }}>
+        <div style={{ display: 'grid', gridTemplateColumns: '120px 1fr 130px', background: '#2b3742', color: '#ffffff', fontSize: 11, letterSpacing: '0.12em', textTransform: 'uppercase', fontFamily: "'IBM Plex Mono', monospace" }}>
           <div style={{ padding: '10px 14px' }}>Test / Year</div>
           <div style={{ padding: '10px 14px' }}>Focus</div>
           <div style={{ padding: '10px 14px' }}>Type</div>
         </div>
         {INSANITY_TESTS.map((t, i) => (
-          <div key={t.id} style={{ display: 'grid', gridTemplateColumns: '120px 1fr 130px', borderTop: '1px solid #e6e1d5', background: i % 2 ? '#f5f2ea' : '#ffffff', fontFamily: "'Source Serif Pro', Georgia, serif", fontSize: 13.5 }}>
-            <div style={{ padding: '11px 14px' }}><div style={{ fontFamily: "'Fraunces', serif", fontStyle: 'italic', color: '#2b3742', fontSize: 14.5 }}>{t.name}</div><div style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 12, color: '#7c2d2d', marginTop: 2 }}>{t.year}</div></div>
+          <div key={t.id} style={{ display: 'grid', gridTemplateColumns: '120px 1fr 130px', borderTop: '1px solid #e6e1d5', background: i % 2 ? '#f5f2ea' : '#ffffff', fontFamily: "'Aleo', Georgia, serif", fontSize: 13.5 }}>
+            <div style={{ padding: '11px 14px' }}><div style={{ fontFamily: "'Aleo', serif", fontStyle: 'italic', color: '#2b3742', fontSize: 14.5 }}>{t.name}</div><div style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 12, color: '#7c2d2d', marginTop: 2 }}>{t.year}</div></div>
             <div style={{ padding: '11px 14px', color: '#283038', lineHeight: 1.5 }}>{t.focus}</div>
             <div style={{ padding: '11px 14px' }}><span style={{ fontSize: 11.5, color: '#6e2626', background: '#f6e9e6', border: '1px solid #e0bdb8', borderRadius: 3, padding: '2px 8px' }}>{t.tag}</span></div>
           </div>
@@ -1439,12 +1466,12 @@ function InsanityMode({ buried, toggleBury }) {
           return (
             <div key={t.id} style={{ ...cardStyle, opacity: isBuried ? 0.55 : 1 }}>
               <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, flexWrap: 'wrap', marginBottom: 8 }}>
-                <h3 style={{ fontFamily: "'Fraunces', serif", fontSize: 21, fontStyle: 'italic', fontWeight: 500, color: '#2b3742', margin: 0 }}>{t.name}</h3>
-                <span style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 12.5, color: '#7c2d2d' }}>{t.year} · {t.tag}</span>
+                <h3 style={{ fontFamily: "'Aleo', serif", fontSize: 21, fontStyle: 'italic', fontWeight: 500, color: '#2b3742', margin: 0 }}>{t.name}</h3>
+                <span style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 12.5, color: '#7c2d2d' }}>{t.year} · {t.tag}</span>
                 {isBuried && <span style={{ fontSize: 11, color: '#34602f' }}>· buried</span>}
               </div>
-              <p style={{ fontSize: 14.5, lineHeight: 1.65, color: '#283038', margin: '0 0 10px 0', fontFamily: "'Source Serif Pro', Georgia, serif" }}>{t.rule}</p>
-              <div style={{ fontSize: 13, color: '#6e6757', fontFamily: "'Source Serif Pro', Georgia, serif", marginBottom: 12 }}>
+              <p style={{ fontSize: 14.5, lineHeight: 1.65, color: '#283038', margin: '0 0 10px 0', fontFamily: "'Aleo', Georgia, serif" }}>{t.rule}</p>
+              <div style={{ fontSize: 13, color: '#6e6757', fontFamily: "'Aleo', Georgia, serif", marginBottom: 12 }}>
                 <div style={{ marginBottom: 4 }}><strong style={{ color: '#2b3742' }}>Origin:</strong> {t.origin}</div>
                 <div><strong style={{ color: '#8b2c2c' }}>Criticism:</strong> {t.criticism}</div>
               </div>
@@ -1460,8 +1487,8 @@ function InsanityMode({ buried, toggleBury }) {
           const isBuried = !!buried['idra:' + i];
           return (
             <div key={i} style={{ background: '#f5f2ea', border: '1px solid #e6e1d5', borderLeft: '3px solid #2b3742', borderRadius: 3, padding: 14, opacity: isBuried ? 0.55 : 1 }}>
-              <div style={{ fontFamily: "'Fraunces', serif", fontSize: 16, fontStyle: 'italic', fontWeight: 500, color: '#2b3742', marginBottom: 5 }}>{p.h}{isBuried && <span style={{ fontSize: 11, fontStyle: 'normal', color: '#34602f', marginLeft: 6 }}>· buried</span>}</div>
-              <div style={{ fontSize: 13.5, lineHeight: 1.55, color: '#283038', fontFamily: "'Source Serif Pro', Georgia, serif", marginBottom: 10 }}>{p.t}</div>
+              <div style={{ fontFamily: "'Aleo', serif", fontSize: 16, fontStyle: 'italic', fontWeight: 500, color: '#2b3742', marginBottom: 5 }}>{p.h}{isBuried && <span style={{ fontSize: 11, fontStyle: 'normal', color: '#34602f', marginLeft: 6 }}>· buried</span>}</div>
+              <div style={{ fontSize: 13.5, lineHeight: 1.55, color: '#283038', fontFamily: "'Aleo', Georgia, serif", marginBottom: 10 }}>{p.t}</div>
               <BuryButton buried={isBuried} onClick={() => toggleBury('idra:' + i)} />
             </div>
           );
@@ -1487,19 +1514,19 @@ function BasicLawMode({ buried, toggleBury }) {
       <SectionHeader title="Basic Law Concepts" sub="The structural fundamentals — sources of law, the court ladder, standards of proof, expert testimony — plus the two you must have cold: Ohio's competence-to-stand-trial statute and the Daubert criteria." />
       {groups.map(([cat, list]) => (
         <section key={cat} style={{ marginBottom: 28 }}>
-          <h3 style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 12, fontWeight: 500, color: '#7c2d2d', margin: '0 0 12px 0', textTransform: 'uppercase', letterSpacing: '0.18em' }}>{cat}</h3>
+          <h3 style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 12, fontWeight: 500, color: '#7c2d2d', margin: '0 0 12px 0', textTransform: 'uppercase', letterSpacing: '0.18em' }}>{cat}</h3>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
             {list.map(c => {
               const star = c.id === 'ohio_cst' || c.id === 'daubert';
               const isBuried = !!buried['basic:' + c.id];
               return (
                 <div key={c.id} style={{ ...cardStyle, borderLeft: star ? '4px solid #7c2d2d' : '1px solid #dcd6c8', opacity: isBuried ? 0.55 : 1 }}>
-                  <h4 style={{ fontFamily: "'Fraunces', serif", fontSize: 20, fontStyle: 'italic', fontWeight: 500, color: '#2b3742', margin: '0 0 8px 0', display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-                    {star && <span style={{ fontSize: 11, fontStyle: 'normal', background: '#7c2d2d', color: '#ffffff', borderRadius: 3, padding: '2px 7px', letterSpacing: '0.08em', fontFamily: "'JetBrains Mono', monospace" }}>HIGH YIELD</span>}
+                  <h4 style={{ fontFamily: "'Aleo', serif", fontSize: 20, fontStyle: 'italic', fontWeight: 500, color: '#2b3742', margin: '0 0 8px 0', display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                    {star && <span style={{ fontSize: 11, fontStyle: 'normal', background: '#7c2d2d', color: '#ffffff', borderRadius: 3, padding: '2px 7px', letterSpacing: '0.08em', fontFamily: "'IBM Plex Mono', monospace" }}>HIGH YIELD</span>}
                     {c.title}{isBuried && <span style={{ fontSize: 11, fontStyle: 'normal', color: '#34602f' }}>· buried</span>}
                   </h4>
-                  <p style={{ fontSize: 14.5, lineHeight: 1.65, color: '#283038', margin: '0 0 12px 0', fontFamily: "'Source Serif Pro', Georgia, serif" }}>{c.body}</p>
-                  <ul style={{ margin: '0 0 12px 0', paddingLeft: 20, fontFamily: "'Source Serif Pro', Georgia, serif", fontSize: 14, lineHeight: 1.7, color: '#3c4148' }}>
+                  <p style={{ fontSize: 14.5, lineHeight: 1.65, color: '#283038', margin: '0 0 12px 0', fontFamily: "'Aleo', Georgia, serif" }}>{c.body}</p>
+                  <ul style={{ margin: '0 0 12px 0', paddingLeft: 20, fontFamily: "'Aleo', Georgia, serif", fontSize: 14, lineHeight: 1.7, color: '#3c4148' }}>
                     {c.points.map((p, i) => <li key={i}>{p}</li>)}
                   </ul>
                   <BuryButton buried={isBuried} onClick={() => toggleBury('basic:' + c.id)} />
@@ -1536,12 +1563,12 @@ function TermsMode() {
         <div style={{ display: 'flex', gap: 8, marginBottom: 20, alignItems: 'center', flexWrap: 'wrap' }}>
           <button onClick={() => setStudyMode('list')} style={btnSecondary}>← Back to list</button>
           <button onClick={() => { setOrder(shuffleArr(TERMS.map((_, i) => i))); setIdx(0); setShowDef(false); }} style={btnSecondary}><Shuffle size={14} /> Shuffle</button>
-          <div style={{ marginLeft: 'auto', fontFamily: "'JetBrains Mono', monospace", fontSize: 12, color: '#6e6757' }}>{idx + 1} / {TERMS.length}</div>
+          <div style={{ marginLeft: 'auto', fontFamily: "'IBM Plex Mono', monospace", fontSize: 12, color: '#6e6757' }}>{idx + 1} / {TERMS.length}</div>
         </div>
         <div onClick={() => setShowDef(s => !s)} style={{ ...cardStyle, minHeight: 280, display: 'flex', flexDirection: 'column', justifyContent: 'center', cursor: 'pointer' }}>
           <div style={{ fontSize: 10, letterSpacing: '0.2em', textTransform: 'uppercase', color: '#7c2d2d', marginBottom: 12 }}>Define this term {!showDef && '(click to reveal)'}</div>
-          <h2 style={{ fontFamily: "'Fraunces', serif", fontSize: 32, fontWeight: 600, fontStyle: 'italic', margin: '0 0 18px 0', color: '#2b3742' }}>{t.term}</h2>
-          {showDef && <p style={{ fontSize: 16, lineHeight: 1.6, margin: 0, fontFamily: "'Source Serif Pro', Georgia, serif", color: '#283038' }}>{t.def}</p>}
+          <h2 style={{ fontFamily: "'Aleo', serif", fontSize: 32, fontWeight: 600, fontStyle: 'italic', margin: '0 0 18px 0', color: '#2b3742' }}>{t.term}</h2>
+          {showDef && <p style={{ fontSize: 16, lineHeight: 1.6, margin: 0, fontFamily: "'Aleo', Georgia, serif", color: '#283038' }}>{t.def}</p>}
         </div>
         <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 16 }}>
           <button onClick={() => { setIdx(i => (i - 1 + TERMS.length) % TERMS.length); setShowDef(false); }} style={btnSecondary}><ChevronLeft size={16} /> Previous</button>
@@ -1556,14 +1583,14 @@ function TermsMode() {
       <div style={{ display: 'flex', gap: 10, marginBottom: 20, flexWrap: 'wrap', alignItems: 'center' }}>
         <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search terms…"
           style={{ padding: '8px 12px', fontFamily: 'inherit', fontSize: 14, border: '1px solid #cfc8b8', background: '#f5f2ea', borderRadius: 4, flex: 1, minWidth: 200, color: '#232a31' }} />
-        <span style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 12, color: '#6e6757' }}>{filtered.length} of {TERMS.length}</span>
+        <span style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 12, color: '#6e6757' }}>{filtered.length} of {TERMS.length}</span>
         <button onClick={() => { setStudyMode('quiz'); setOrder(TERMS.map((_, i) => i)); setIdx(0); setShowDef(false); }} style={btnPrimary}><GraduationCap size={14} /> Drill mode</button>
       </div>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: 12 }}>
         {filtered.map((t, i) => (
           <div key={i} style={{ background: '#f5f2ea', border: '1px solid #e6e1d5', borderLeft: '3px solid #7c2d2d', padding: 14, borderRadius: 3 }}>
-            <div style={{ fontFamily: "'Fraunces', serif", fontSize: 17, fontStyle: 'italic', fontWeight: 500, color: '#2b3742', marginBottom: 6 }}>{t.term}</div>
-            <div style={{ fontSize: 13.5, lineHeight: 1.55, fontFamily: "'Source Serif Pro', Georgia, serif", color: '#283038' }}>{t.def}</div>
+            <div style={{ fontFamily: "'Aleo', serif", fontSize: 17, fontStyle: 'italic', fontWeight: 500, color: '#2b3742', marginBottom: 6 }}>{t.term}</div>
+            <div style={{ fontSize: 13.5, lineHeight: 1.55, fontFamily: "'Aleo', Georgia, serif", color: '#283038' }}>{t.def}</div>
           </div>
         ))}
       </div>
@@ -1630,7 +1657,7 @@ function FlashcardsMode({ progress, markCase, buried, toggleBury }) {
           </select>
         )}
         <button onClick={() => { setShuffleSeed(Math.random() * 10000); reset(); }} style={btnSecondary}><Shuffle size={14} /> Shuffle</button>
-        <div style={{ marginLeft: 'auto', fontFamily: "'JetBrains Mono', monospace", fontSize: 12, color: '#6e6757' }}>{deck.length ? idx + 1 : 0} / {deck.length}</div>
+        <div style={{ marginLeft: 'auto', fontFamily: "'IBM Plex Mono', monospace", fontSize: 12, color: '#6e6757' }}>{deck.length ? idx + 1 : 0} / {deck.length}</div>
       </div>
 
       {!current ? <EmptyState message="Every card here is buried. Restore some from the Progress tab or the reference tabs." /> : (
@@ -1640,16 +1667,16 @@ function FlashcardsMode({ progress, markCase, buried, toggleBury }) {
             {!flipped ? (
               <div>
                 <div style={{ fontSize: 11, letterSpacing: '0.2em', textTransform: 'uppercase', color: '#7c2d2d', marginBottom: 12 }}>{current.sub}</div>
-                <h2 style={{ fontFamily: "'Fraunces', serif", fontSize: 32, fontWeight: 600, fontStyle: 'italic', margin: '0 0 8px 0', color: '#2b3742', lineHeight: 1.15 }}>{current.front}</h2>
+                <h2 style={{ fontFamily: "'Aleo', serif", fontSize: 42, fontWeight: 800, fontStyle: 'normal', margin: '0 0 8px 0', color: '#2b3742', lineHeight: 1.1, letterSpacing: '-0.01em' }}>{current.front}</h2>
                 {current.frontExtra && <div style={{ fontSize: 14, color: '#6e6757' }}>{current.frontExtra}</div>}
               </div>
             ) : (
               <div>
                 <div style={{ fontSize: 11, letterSpacing: '0.2em', textTransform: 'uppercase', color: '#2b3742', marginBottom: 8, fontWeight: 600 }}>{current.backHead}</div>
-                <p style={{ fontSize: 16, lineHeight: 1.6, margin: '0 0 16px 0', fontFamily: "'Source Serif Pro', Georgia, serif", color: '#283038', whiteSpace: 'pre-line' }}>{current.back}</p>
+                <p style={{ fontSize: 16, lineHeight: 1.6, margin: '0 0 16px 0', fontFamily: "'Aleo', Georgia, serif", color: '#283038', whiteSpace: 'pre-line' }}>{current.back}</p>
                 {current.back2 && <>
                   <div style={{ fontSize: 11, letterSpacing: '0.2em', textTransform: 'uppercase', color: '#7c2d2d', marginBottom: 6, fontWeight: 600 }}>{current.backHead2}</div>
-                  <p style={{ fontSize: 14, lineHeight: 1.55, margin: 0, fontFamily: "'Source Serif Pro', Georgia, serif", color: '#4c5158', fontStyle: 'italic' }}>{current.back2}</p>
+                  <p style={{ fontSize: 14, lineHeight: 1.55, margin: 0, fontFamily: "'Aleo', Georgia, serif", color: '#4c5158', fontStyle: 'italic' }}>{current.back2}</p>
                 </>}
               </div>
             )}
@@ -1735,17 +1762,17 @@ function QuizMode({ buried }) {
       {!q ? <EmptyState message="No questions in this set — everything here may be buried." /> : (
         <>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20, flexWrap: 'wrap', gap: 8 }}>
-            <div style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 13, color: '#6e6757' }}>
+            <div style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 13, color: '#6e6757' }}>
               Question {idx + 1} / {questions.length}
             </div>
-            <div style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 13 }}>
+            <div style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 13 }}>
               Score: <span style={{ color: '#34602f', fontWeight: 600 }}>{score.correct}</span><span style={{ color: '#6e6757' }}> / {score.total}</span>
               {score.total > 0 && <span style={{ marginLeft: 8, color: '#2b3742' }}>({Math.round(100 * score.correct / score.total)}%)</span>}
             </div>
           </div>
 
           <div style={cardStyle}>
-            <h3 style={{ fontFamily: "'Fraunces', serif", fontSize: 21, fontWeight: 500, margin: '0 0 22px 0', color: '#2b3742', lineHeight: 1.4, whiteSpace: 'pre-line' }}>{q.q}</h3>
+            <h3 style={{ fontFamily: "'Aleo', serif", fontSize: 21, fontWeight: 500, margin: '0 0 22px 0', color: '#2b3742', lineHeight: 1.4, whiteSpace: 'pre-line' }}>{q.q}</h3>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
               {q.options.map((opt, i) => {
                 const isSelected = selected === i, isCorrect = i === q.correct;
@@ -1754,8 +1781,8 @@ function QuizMode({ buried }) {
                 else if (isSelected) { bg = '#f5f2ea'; border = '#2b3742'; }
                 return (
                   <button key={i} onClick={() => !answered && setSelected(i)} disabled={answered}
-                    style={{ textAlign: 'left', padding: '14px 16px', background: bg, border: `1.5px solid ${border}`, color, fontFamily: "'Source Serif Pro', Georgia, serif", fontSize: 15, lineHeight: 1.5, borderRadius: 4, cursor: answered ? 'default' : 'pointer', display: 'flex', alignItems: 'flex-start', gap: 12 }}>
-                    <span style={{ flexShrink: 0, width: 26, height: 26, borderRadius: '50%', border: `1.5px solid ${border}`, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: 13, fontWeight: 600, background: answered && isCorrect ? '#34602f' : (answered && isSelected ? '#8b2c2c' : 'transparent'), color: answered && (isCorrect || isSelected) ? '#fff' : border, fontFamily: "'JetBrains Mono', monospace" }}>
+                    style={{ textAlign: 'left', padding: '14px 16px', background: bg, border: `1.5px solid ${border}`, color, fontFamily: "'Aleo', Georgia, serif", fontSize: 15, lineHeight: 1.5, borderRadius: 4, cursor: answered ? 'default' : 'pointer', display: 'flex', alignItems: 'flex-start', gap: 12 }}>
+                    <span style={{ flexShrink: 0, width: 26, height: 26, borderRadius: '50%', border: `1.5px solid ${border}`, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: 13, fontWeight: 600, background: answered && isCorrect ? '#34602f' : (answered && isSelected ? '#8b2c2c' : 'transparent'), color: answered && (isCorrect || isSelected) ? '#fff' : border, fontFamily: "'IBM Plex Mono', monospace" }}>
                       {answered ? (isCorrect ? <Check size={14} /> : (isSelected ? <X size={14} /> : String.fromCharCode(65 + i))) : String.fromCharCode(65 + i)}
                     </span>
                     <span>{opt}</span>
@@ -1766,7 +1793,94 @@ function QuizMode({ buried }) {
             {answered && (
               <div style={{ marginTop: 20, padding: 16, background: '#f5f2ea', borderLeft: '3px solid #7c2d2d', borderRadius: 2 }}>
                 <div style={{ fontSize: 10, letterSpacing: '0.2em', textTransform: 'uppercase', color: '#7c2d2d', fontWeight: 600, marginBottom: 6 }}>Explanation</div>
-                <div style={{ fontSize: 14, lineHeight: 1.6, fontFamily: "'Source Serif Pro', Georgia, serif", color: '#283038' }}>{q.explanation}</div>
+                <div style={{ fontSize: 14, lineHeight: 1.6, fontFamily: "'Aleo', Georgia, serif", color: '#283038' }}>{q.explanation}</div>
+              </div>
+            )}
+          </div>
+
+          <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 18 }}>
+            <button onClick={next} style={btnSecondary}>Skip <ChevronRight size={14} /></button>
+            {!answered
+              ? <button onClick={submit} disabled={selected === null} style={selected === null ? btnDisabled : btnPrimary}>Submit answer</button>
+              : <button onClick={next} style={btnPrimary}>Next question <ChevronRight size={16} /></button>}
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
+// =====================================================================
+// PROGRESS DASHBOARD
+// =====================================================================
+// =====================================================================
+// CASE BASICS QUIZ — category / court / year only
+// =====================================================================
+function CaseBasicsMode({ buried }) {
+  const [kind, setKind] = useState('mixed');
+  const [questions, setQuestions] = useState(() => generateBasicsQuestions('mixed', buried));
+  const [idx, setIdx] = useState(0);
+  const [selected, setSelected] = useState(null);
+  const [answered, setAnswered] = useState(false);
+  const [score, setScore] = useState({ correct: 0, total: 0 });
+
+  const kinds = [
+    { id: 'mixed', label: 'Mixed' },
+    { id: 'year', label: 'Year' },
+    { id: 'court', label: 'Court' },
+    { id: 'category', label: 'Category' },
+  ];
+
+  const q = questions[idx];
+  const submit = () => { if (selected === null) return; setAnswered(true); setScore(s => ({ correct: s.correct + (selected === q.correct ? 1 : 0), total: s.total + 1 })); };
+  const next = () => { setSelected(null); setAnswered(false); setIdx(i => (i + 1) % questions.length); };
+  const rebuild = (k) => { setQuestions(generateBasicsQuestions(k, buried)); setIdx(0); setSelected(null); setAnswered(false); setScore({ correct: 0, total: 0 }); };
+  const pick = (k) => { setKind(k); rebuild(k); };
+
+  return (
+    <div>
+      <p style={{ fontSize: 13, color: '#6e6757', fontStyle: 'italic', margin: '0 0 14px 0', lineHeight: 1.6 }}>
+        Rapid recall of the bare facts — what court, what year, what topic area. Great for locking in the details that are easy to blank on under pressure.
+      </p>
+      <SubTabs tabs={kinds} active={kind} setActive={pick} />
+
+      <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center', marginBottom: 16 }}>
+        <button onClick={() => rebuild(kind)} style={btnSecondary}><RotateCcw size={14} /> New set</button>
+      </div>
+
+      {!q ? <EmptyState message="No cases available — they may all be buried." /> : (
+        <>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20, flexWrap: 'wrap', gap: 8 }}>
+            <div style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 13, color: '#6e6757' }}>Question {idx + 1} / {questions.length}</div>
+            <div style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 13 }}>
+              Score: <span style={{ color: '#34602f', fontWeight: 600 }}>{score.correct}</span><span style={{ color: '#6e6757' }}> / {score.total}</span>
+              {score.total > 0 && <span style={{ marginLeft: 8, color: '#2b3742' }}>({Math.round(100 * score.correct / score.total)}%)</span>}
+            </div>
+          </div>
+
+          <div style={cardStyle}>
+            <h3 style={{ fontFamily: "'Aleo', serif", fontSize: 21, fontWeight: 500, margin: '0 0 22px 0', color: '#2b3742', lineHeight: 1.4 }}>{q.q}</h3>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+              {q.options.map((opt, i) => {
+                const isSelected = selected === i, isCorrect = i === q.correct;
+                let bg = '#f5f2ea', border = '#cfc8b8', color = '#283038';
+                if (answered) { if (isCorrect) { bg = '#e2ecde'; border = '#34602f'; color = '#2c5226'; } else if (isSelected) { bg = '#f3dede'; border = '#8b2c2c'; color = '#5e1e1e'; } }
+                else if (isSelected) { bg = '#f5f2ea'; border = '#2b3742'; }
+                return (
+                  <button key={i} onClick={() => !answered && setSelected(i)} disabled={answered}
+                    style={{ textAlign: 'left', padding: '14px 16px', background: bg, border: `1.5px solid ${border}`, color, fontFamily: "'Aleo', Georgia, serif", fontSize: 15, lineHeight: 1.5, borderRadius: 4, cursor: answered ? 'default' : 'pointer', display: 'flex', alignItems: 'center', gap: 12 }}>
+                    <span style={{ flexShrink: 0, width: 26, height: 26, borderRadius: '50%', border: `1.5px solid ${border}`, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: 13, fontWeight: 600, background: answered && isCorrect ? '#34602f' : (answered && isSelected ? '#8b2c2c' : 'transparent'), color: answered && (isCorrect || isSelected) ? '#fff' : border, fontFamily: "'IBM Plex Mono', monospace" }}>
+                      {answered ? (isCorrect ? <Check size={14} /> : (isSelected ? <X size={14} /> : String.fromCharCode(65 + i))) : String.fromCharCode(65 + i)}
+                    </span>
+                    <span>{opt}</span>
+                  </button>
+                );
+              })}
+            </div>
+            {answered && (
+              <div style={{ marginTop: 20, padding: 16, background: '#f5f2ea', borderLeft: '3px solid #7c2d2d', borderRadius: 2 }}>
+                <div style={{ fontSize: 10, letterSpacing: '0.2em', textTransform: 'uppercase', color: '#7c2d2d', fontWeight: 600, marginBottom: 6 }}>Answer</div>
+                <div style={{ fontSize: 14, lineHeight: 1.6, fontFamily: "'Aleo', Georgia, serif", color: '#283038' }}>{q.explanation}</div>
               </div>
             )}
           </div>
@@ -1810,15 +1924,15 @@ function ProgressMode({ progress, resetProgress, buried, toggleBury, unburyAll }
         <BigStat label="Untouched" value={stats.untouched} color="#6e6757" />
       </div>
 
-      <h3 style={{ fontFamily: "'Fraunces', serif", fontSize: 22, fontStyle: 'italic', fontWeight: 500, color: '#2b3742', margin: '24px 0 14px 0' }}>Progress by category</h3>
+      <h3 style={{ fontFamily: "'Aleo', serif", fontSize: 22, fontStyle: 'italic', fontWeight: 500, color: '#2b3742', margin: '24px 0 14px 0' }}>Progress by category</h3>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
         {Object.entries(byCategory).map(([cat, s]) => {
           const pct = (s.mastered / s.total) * 100;
           return (
             <div key={cat} style={{ background: '#f5f2ea', padding: '12px 16px', border: '1px solid #e6e1d5', borderRadius: 3 }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6 }}>
-                <span style={{ fontFamily: "'Fraunces', serif", fontSize: 15, fontStyle: 'italic', color: '#2b3742' }}>{cat}</span>
-                <span style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 12, color: '#6e6757' }}>{s.mastered} / {s.total}</span>
+                <span style={{ fontFamily: "'Aleo', serif", fontSize: 15, fontStyle: 'italic', color: '#2b3742' }}>{cat}</span>
+                <span style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 12, color: '#6e6757' }}>{s.mastered} / {s.total}</span>
               </div>
               <div style={{ height: 6, background: '#e6e1d5', borderRadius: 3, overflow: 'hidden' }}>
                 <div style={{ width: `${pct}%`, height: '100%', background: 'linear-gradient(90deg, #34602f, #4f7d45)', transition: 'width 0.3s' }} />
@@ -1830,10 +1944,10 @@ function ProgressMode({ progress, resetProgress, buried, toggleBury, unburyAll }
 
       {needsReview.length > 0 && (
         <>
-          <h3 style={{ fontFamily: "'Fraunces', serif", fontSize: 22, fontStyle: 'italic', fontWeight: 500, color: '#2b3742', margin: '32px 0 14px 0' }}>Cases flagged for review ({needsReview.length})</h3>
+          <h3 style={{ fontFamily: "'Aleo', serif", fontSize: 22, fontStyle: 'italic', fontWeight: 500, color: '#2b3742', margin: '32px 0 14px 0' }}>Cases flagged for review ({needsReview.length})</h3>
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
             {needsReview.map(c => (
-              <span key={c.id} style={{ padding: '6px 12px', background: progress[c.id] === 'unknown' ? '#f3dede' : '#f6e9e6', border: `1px solid ${progress[c.id] === 'unknown' ? '#8b2c2c' : '#8a5a1c'}`, borderRadius: 3, fontSize: 13, fontFamily: "'Fraunces', serif", fontStyle: 'italic', color: progress[c.id] === 'unknown' ? '#5e1e1e' : '#6e2626' }}>{c.name}</span>
+              <span key={c.id} style={{ padding: '6px 12px', background: progress[c.id] === 'unknown' ? '#f3dede' : '#f6e9e6', border: `1px solid ${progress[c.id] === 'unknown' ? '#8b2c2c' : '#8a5a1c'}`, borderRadius: 3, fontSize: 13, fontFamily: "'Aleo', serif", fontStyle: 'normal', fontWeight: 700, color: progress[c.id] === 'unknown' ? '#5e1e1e' : '#6e2626' }}>{c.name}</span>
             ))}
           </div>
         </>
@@ -1853,12 +1967,12 @@ function ProgressMode({ progress, resetProgress, buried, toggleBury, unburyAll }
         const keys = Object.keys(buried);
         return (
           <>
-            <h3 style={{ fontFamily: "'Fraunces', serif", fontSize: 22, fontStyle: 'italic', fontWeight: 500, color: '#2b3742', margin: '32px 0 6px 0' }}>Buried — hidden from study sets ({keys.length})</h3>
-            <p style={{ fontSize: 13, color: '#6e6757', margin: '0 0 14px 0', fontFamily: "'Source Serif Pro', Georgia, serif" }}>These are skipped in Oral Sim, Flashcards, and the MCQ quiz. Click any to bring it back.</p>
+            <h3 style={{ fontFamily: "'Aleo', serif", fontSize: 22, fontStyle: 'italic', fontWeight: 500, color: '#2b3742', margin: '32px 0 6px 0' }}>Buried — hidden from study sets ({keys.length})</h3>
+            <p style={{ fontSize: 13, color: '#6e6757', margin: '0 0 14px 0', fontFamily: "'Aleo', Georgia, serif" }}>These are skipped in Oral Sim, Flashcards, and the MCQ quiz. Click any to bring it back.</p>
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 8 }}>
               {keys.map(k => (
                 <button key={k} onClick={() => toggleBury(k)} title="Restore"
-                  style={{ padding: '6px 12px', background: '#e2ecde', border: '1px solid #cde0c6', borderRadius: 3, fontSize: 13, fontFamily: "'Fraunces', serif", fontStyle: 'italic', color: '#34602f', display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                  style={{ padding: '6px 12px', background: '#e2ecde', border: '1px solid #cde0c6', borderRadius: 3, fontSize: 13, fontFamily: "'Aleo', serif", fontStyle: 'italic', color: '#34602f', display: 'inline-flex', alignItems: 'center', gap: 6 }}>
                   <RotateCcw size={12} /> {labelFor(k)}
                 </button>
               ))}
@@ -1880,7 +1994,7 @@ function ProgressMode({ progress, resetProgress, buried, toggleBury, unburyAll }
 function BigStat({ label, value, color }) {
   return (
     <div style={{ background: '#f5f2ea', border: '1px solid #e6e1d5', borderTop: `3px solid ${color}`, padding: 18, borderRadius: 3, textAlign: 'center' }}>
-      <div style={{ fontSize: 38, fontWeight: 700, color, lineHeight: 1, fontFamily: "'Fraunces', serif" }}>{value}</div>
+      <div style={{ fontSize: 38, fontWeight: 700, color, lineHeight: 1, fontFamily: "'Aleo', serif" }}>{value}</div>
       <div style={{ fontSize: 10, letterSpacing: '0.2em', textTransform: 'uppercase', color: '#6e6757', marginTop: 8 }}>{label}</div>
     </div>
   );
@@ -1918,7 +2032,7 @@ function CountdownMode() {
 
   const Unit = ({ value, label }) => (
     <div style={{ textAlign: 'center', minWidth: 92 }}>
-      <div style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 56, fontWeight: 500, color: '#ffffff', lineHeight: 1, letterSpacing: '-0.02em' }}>
+      <div style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 56, fontWeight: 500, color: '#ffffff', lineHeight: 1, letterSpacing: '-0.02em' }}>
         {String(value).padStart(2, '0')}
       </div>
       <div style={{ fontSize: 11, letterSpacing: '0.25em', textTransform: 'uppercase', color: '#b9b2a0', marginTop: 10 }}>{label}</div>
@@ -1931,7 +2045,7 @@ function CountdownMode() {
         <div style={{ fontSize: 11, letterSpacing: '0.3em', textTransform: 'uppercase', color: '#9fb0bb', marginBottom: 6 }}>
           {past ? 'The day is here' : 'Time until the Landmark Final Exam'}
         </div>
-        <div style={{ fontFamily: "'Fraunces', serif", fontStyle: 'italic', fontSize: 22, color: '#ffffff', marginBottom: 28 }}>
+        <div style={{ fontFamily: "'Aleo', serif", fontStyle: 'italic', fontSize: 22, color: '#ffffff', marginBottom: 28 }}>
           Monday, June 8, 2026 · 8:00 AM
         </div>
 
@@ -1945,15 +2059,15 @@ function CountdownMode() {
           <div style={{ animation: 'pulse 1s infinite' }}><Unit value={secs} label="Seconds" /></div>
         </div>
 
-        {past && <div style={{ marginTop: 20, fontFamily: "'JetBrains Mono', monospace", fontSize: 12, color: '#9fb0bb' }}>(elapsed since start)</div>}
+        {past && <div style={{ marginTop: 20, fontFamily: "'IBM Plex Mono', monospace", fontSize: 12, color: '#9fb0bb' }}>(elapsed since start)</div>}
       </div>
 
       <div style={{ ...cardStyle, marginTop: 18, textAlign: 'center' }}>
         <Sparkles size={22} style={{ color: '#7c2d2d', margin: '0 auto 8px', display: 'block' }} />
-        <p style={{ fontFamily: "'Fraunces', serif", fontStyle: 'italic', fontSize: 19, color: '#2b3742', margin: '0 0 6px 0' }}>{line}</p>
+        <p style={{ fontFamily: "'Aleo', serif", fontStyle: 'italic', fontSize: 19, color: '#2b3742', margin: '0 0 6px 0' }}>{line}</p>
         {!past && (
           <>
-            <div style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 12.5, color: '#6e6757', marginBottom: 12 }}>
+            <div style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 12.5, color: '#6e6757', marginBottom: 12 }}>
               {days} days · {hours} hrs · {mins} min · {secs} sec to go
             </div>
             <div style={{ height: 8, background: '#e6e1d5', borderRadius: 4, overflow: 'hidden', maxWidth: 460, margin: '0 auto' }}>
@@ -1967,7 +2081,7 @@ function CountdownMode() {
 }
 
 function Separator() {
-  return <div style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 48, color: '#4a5a66', lineHeight: 1, alignSelf: 'flex-start', marginTop: 2 }}>:</div>;
+  return <div style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 48, color: '#4a5a66', lineHeight: 1, alignSelf: 'flex-start', marginTop: 2 }}>:</div>;
 }
 
 // =====================================================================
@@ -1990,9 +2104,9 @@ function SubTabs({ tabs, active, setActive }) {
         return (
           <button key={t.id} onClick={() => setActive(t.id)}
             style={{ background: on ? '#2b3742' : 'transparent', color: on ? '#fff' : '#4c5158', border: 'none',
-              padding: '7px 14px', fontSize: 13, fontFamily: "'Fraunces', serif", fontStyle: on ? 'italic' : 'normal',
+              padding: '7px 14px', fontSize: 13, fontFamily: "'Aleo', serif", fontStyle: on ? 'italic' : 'normal',
               fontWeight: on ? 600 : 400, borderRadius: 4 }}>
-            {t.label}{t.count != null && <span style={{ opacity: 0.7, marginLeft: 6, fontFamily: "'JetBrains Mono', monospace", fontSize: 11 }}>{t.count}</span>}
+            {t.label}{t.count != null && <span style={{ opacity: 0.7, marginLeft: 6, fontFamily: "'IBM Plex Mono', monospace", fontSize: 11 }}>{t.count}</span>}
           </button>
         );
       })}
@@ -2004,7 +2118,7 @@ function EmptyState({ message }) {
   return (
     <div style={{ ...cardStyle, textAlign: 'center', padding: 60 }}>
       <Sparkles size={32} style={{ color: '#7c2d2d', margin: '0 auto 12px', display: 'block' }} />
-      <p style={{ fontFamily: "'Fraunces', serif", fontStyle: 'italic', fontSize: 16, color: '#6e6757', margin: 0 }}>{message}</p>
+      <p style={{ fontFamily: "'Aleo', serif", fontStyle: 'italic', fontSize: 16, color: '#6e6757', margin: 0 }}>{message}</p>
     </div>
   );
 }
@@ -2029,13 +2143,13 @@ const selectStyle = {
 
 const btnPrimary = {
   background: '#2b3742', color: '#ffffff', border: '1.5px solid #2b3742',
-  padding: '9px 16px', fontSize: 14, fontFamily: "'Fraunces', serif", fontStyle: 'italic',
+  padding: '9px 16px', fontSize: 14, fontFamily: "'Aleo', serif", fontStyle: 'italic',
   borderRadius: 3, display: 'inline-flex', alignItems: 'center', gap: 6, transition: 'all 0.15s',
 };
 
 const btnSecondary = {
   background: 'transparent', color: '#2b3742', border: '1.5px solid #2b3742',
-  padding: '9px 16px', fontSize: 14, fontFamily: "'Fraunces', serif",
+  padding: '9px 16px', fontSize: 14, fontFamily: "'Aleo', serif",
   borderRadius: 3, display: 'inline-flex', alignItems: 'center', gap: 6, transition: 'all 0.15s',
 };
 
