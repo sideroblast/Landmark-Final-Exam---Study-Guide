@@ -101,13 +101,13 @@ const CASES = [
     holding: "Defect of reason from disease of mind such that defendant (1) did not know nature/quality of act, OR (2) did not know it was wrong.",
     significance: "Foundational cognitive-only test. Adopted broadly in U.S.",
     elements: ["Defect of reason","Disease of the mind","Didn't know nature/quality of act","Didn't know act was wrong"] },
-  { id: "durham", name: "Durham v. U.S.", year: 1954, court: "D.C. Cir.", category: "Insanity Defense",
+  { id: "durham", bazelon: true, name: "Durham v. U.S.", year: 1954, court: "D.C. Cir.", category: "Insanity Defense",
     facts: "Mentally ill burglar; M'Naghten and irresistible impulse rule applied; trial court rejected insanity defense and said there wasn't enough evidence to outweigh presumption of sanity; appealed NGRI standard used and argued burden of proof is on prosecution to prove sanity.",
     issue: "Should \"right/wrong\" test alone govern legal insanity?",
     holding: "\"Product test\": not criminally responsible if act was the product of mental disease or defect.",
     significance: "Gave psychiatrists outsized role; abandoned even in DC.",
     elements: ["Product of mental disease or defect","Causal link required"] },
-  { id: "washington_us", name: "Washington v. U.S.", year: 1967, court: "D.C. Cir.", category: "Insanity Defense",
+  { id: "washington_us", bazelon: true, name: "Washington v. U.S.", year: 1967, court: "D.C. Cir.", category: "Insanity Defense",
     facts: "Washington convicted of rape, robbery, assault; used insanity defense unsuccessfully.",
     issue: "How to apply product test? May experts testify on ultimate issue?",
     holding: "Affirmed. Psychiatrists may NOT testify on ultimate issue. They must explain how disease relates to behavior, not speak in terms of \"product\" or \"cause.\"",
@@ -335,7 +335,7 @@ const CASES = [
     holding: "Yes — competent persons have liberty interest in refusing treatment. Yes — states may require clear and convincing evidence of wishes.",
     significance: "Foundational right-to-refuse-treatment; basis for advance directives.",
     elements: ["Liberty interest in refusing treatment","Clear and convincing evidence permissible","Bodily integrity"] },
-  { id: "rouse", name: "Rouse v. Cameron", year: 1966, court: "D.C. Cir.", category: "Right to Treatment",
+  { id: "rouse", bazelon: true, name: "Rouse v. Cameron", year: 1966, court: "D.C. Cir.", category: "Right to Treatment",
     facts: "Mr. Rouse was charged w/ carrying a weapon in DC, found NGRI, committed to St. Elizabeths. While committed, he alleged that he was confined without treatment; filed habeas corpus in U.S. District Court asserting that continued confinement was unlawful; DC denied petition saying that recovery of sanity is the purpose of confinement, not treatment; appealed to DCCA.",
     issue: "Do involuntarily committed patients have a right to treatment?",
     holding: "Yes, based on DC statute (Hospitalization of Mentally Ill Act).",
@@ -449,7 +449,7 @@ const CASES = [
     holding: "Yes — new cause of action. Dillon factors: proximity, contemporaneous observation, close relationship.",
     significance: "Foundational NIED case; foreseeability principle.",
     elements: ["Proximity to accident","Contemporaneous observation","Close relationship to victim"] },
-  { id: "lake", name: "Lake v. Cameron", year: 1966, court: "D.C. Cir.", category: "Civil Commitment",
+  { id: "lake", bazelon: true, name: "Lake v. Cameron", year: 1966, court: "D.C. Cir.", category: "Civil Commitment",
     facts: "Catherine Lake, an elderly woman with chronic brain syndrome, was involuntarily committed to St. Elizabeths Hospital after being found wandering and unable to care for herself. She sought less restrictive alternatives to hospitalization.",
     issue: "Right to least restrictive alternative placement?",
     holding: "Yes. Government must explore alternatives before indefinite institutional confinement.",
@@ -557,25 +557,25 @@ const CASES = [
     holding: "Clear and convincing evidence (constitutional minimum).",
     significance: "Parental rights are fundamental liberty interests; termination is drastic.",
     elements: ["Clear and convincing evidence","Parental rights are fundamental","Higher than preponderance"] },
-  { id: "gault", name: "In re Gault", year: 1967, court: "SCOTUS", category: "Juvenile",
+  { id: "gault", name: "In re Gault", year: 1967, court: "SCOTUS", category: "Juvenile Court/Education Services",
     facts: "Gerald Gault, 15, was committed to a juvenile detention facility for up to 6 years for making an obscene phone call. Adults could receive only a $5-$50 fine or 2 months in jail for the same offense. No notice, no attorney, no right to confront witnesses, no privilege against self-incrimination was provided.",
     issue: "What due process rights do juveniles have in delinquency proceedings?",
     holding: "Notice of charges, right to counsel, confrontation/cross-exam, privilege against self-incrimination.",
     significance: "Constitutionalized juvenile court procedures; ended parens patriae informality.",
     elements: ["Notice of charges","Right to counsel","Confrontation/cross-exam","Self-incrimination privilege"] },
-  { id: "fare", name: "Fare v. Michael C.", year: 1979, court: "SCOTUS", category: "Juvenile",
+  { id: "fare", name: "Fare v. Michael C.", year: 1979, court: "SCOTUS", category: "Juvenile Court/Education Services",
     facts: "A 16-year-old (Michael) was suspected of murder and brought in for questioning. He asked to speak with his probation officer rather than an attorney. Police denied this request and continued questioning. Michael eventually made incriminating statements.",
     issue: "Does request for probation officer invoke Miranda?",
     holding: "No. Probation officer ≠ attorney. Apply totality of circumstances for juvenile Miranda waivers.",
     significance: "Totality of circumstances test for juvenile Miranda waivers.",
     elements: ["Probation officer ≠ attorney","Totality of circumstances","Age, experience, capacity considered"] },
-  { id: "rowley", name: "Board of Education v. Rowley", year: 1982, court: "SCOTUS", category: "Juvenile",
+  { id: "rowley", name: "Board of Education v. Rowley", year: 1982, court: "SCOTUS", category: "Juvenile Court/Education Services",
     facts: "Amy Rowley, a deaf student, was doing well in school with a hearing aid and sign language interpreter part-time. Her parents sought a full-time interpreter under the Education for All Handicapped Children Act (EAHCA/IDEA). The school denied this, and the parents challenged the school's IEP.",
     issue: "What educational standard does IDEA require?",
     holding: "Schools must provide program reasonably calculated to enable educational benefits — not maximize potential.",
     significance: "\"Educational benefit\" standard for IDEA.",
     elements: ["Procedural compliance","IEP reasonably calculated for educational benefit","Not required to maximize potential"] },
-  { id: "tatro", name: "Irving ISD v. Tatro", year: 1984, court: "SCOTUS", category: "Juvenile",
+  { id: "tatro", name: "Irving ISD v. Tatro", year: 1984, court: "SCOTUS", category: "Juvenile Court/Education Services",
     facts: "Amber Tatro had spina bifida and needed clean intermittent catheterization (CIC) every 3-4 hours to attend school. The Irving Independent School District refused to provide CIC, classifying it as an excluded 'medical service' rather than a required 'related service' under IDEA.",
     issue: "Is CIC a \"related service\" under IDEA or an excluded \"medical service\"?",
     holding: "Related service. \"Medical service\" exclusion = must be performed by physician. CIC doesn't need physician.",
@@ -1205,7 +1205,7 @@ function OralExamMode({ progress, markCase, buried, toggleBury }) {
         <div style={{ fontSize: 10, letterSpacing: '0.25em', textTransform: 'uppercase', color: '#7c2d2d', marginBottom: 8 }}>Examiner says…</div>
         <div style={{ fontFamily: "'Aleo', serif", fontSize: 19, fontWeight: 400, fontStyle: 'italic', color: '#4c5158', margin: '0 0 4px 0' }}>"Tell me about…"</div>
         <h2 style={{ fontFamily: "'Aleo', serif", fontSize: 36, fontWeight: 800, fontStyle: 'normal', margin: '0 0 4px 0', color: '#2b3742', lineHeight: 1.12, letterSpacing: '-0.01em' }}>{current.name}</h2>
-        <div style={{ fontSize: 13, color: '#6e6757', marginBottom: 8 }}><em>{current.category}</em></div>
+        <div style={{ fontSize: 13, color: '#6e6757', marginBottom: 8, display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}><em>{current.category}</em>{current.bazelon && <BazelonBadge size="lg" />}</div>
 
         <div style={{ borderTop: '1px solid #e6e1d5', paddingTop: 16, marginTop: 12 }}>
           <p style={{ fontSize: 14, color: '#6e6757', fontStyle: 'italic', margin: '0 0 14px 0', lineHeight: 1.6 }}>
@@ -1331,6 +1331,7 @@ function BrowseMode({ progress, buried, toggleBury }) {
                     <span>
                       <span style={{ fontFamily: "'Aleo', serif", fontSize: 18.5, fontStyle: 'normal', color: '#2b3742', fontWeight: 800 }}>{c.name}</span>
                       <span style={{ fontSize: 12, color: '#6e6757', marginLeft: 10 }}>({c.year}, {c.court})</span>
+                      {c.bazelon && <span style={{ marginLeft: 8 }}><BazelonBadge /></span>}
                       {isBuried && <span style={{ fontSize: 11, color: '#34602f', marginLeft: 8 }}>· buried</span>}
                     </span>
                     <ChevronRight size={16} style={{ color: '#7c2d2d', transform: open ? 'rotate(90deg)' : 'rotate(0)', transition: 'transform 0.2s' }} />
@@ -1623,7 +1624,7 @@ function FlashcardsMode({ progress, markCase, buried, toggleBury }) {
       if (filter === 'unseen') list = list.filter(c => !progress[c.id]);
       if (CATEGORIES.includes(filter)) list = list.filter(c => c.category === filter);
       return seedShuffle(list.map(c => ({
-        key: 'case:' + c.id, front: c.name, sub: c.category, frontExtra: `${c.court} · ${c.year}`,
+        key: 'case:' + c.id, front: c.name, sub: c.category, frontExtra: `${c.court} · ${c.year}`, bazelon: c.bazelon,
         backHead: 'Holding', back: c.holding, backHead2: 'Significance', back2: c.significance,
       })));
     }
@@ -1669,6 +1670,7 @@ function FlashcardsMode({ progress, markCase, buried, toggleBury }) {
                 <div style={{ fontSize: 11, letterSpacing: '0.2em', textTransform: 'uppercase', color: '#7c2d2d', marginBottom: 12 }}>{current.sub}</div>
                 <h2 style={{ fontFamily: "'Aleo', serif", fontSize: 42, fontWeight: 800, fontStyle: 'normal', margin: '0 0 8px 0', color: '#2b3742', lineHeight: 1.1, letterSpacing: '-0.01em' }}>{current.front}</h2>
                 {current.frontExtra && <div style={{ fontSize: 14, color: '#6e6757' }}>{current.frontExtra}</div>}
+                {current.bazelon && <div style={{ marginTop: 12 }}><BazelonBadge size="lg" /></div>}
               </div>
             ) : (
               <div>
@@ -2087,6 +2089,15 @@ function Separator() {
 // =====================================================================
 // UTILITIES + SHARED STYLES
 // =====================================================================
+function BazelonBadge({ size = 'sm' }) {
+  return (
+    <span title="Opinion authored by Judge David L. Bazelon (D.C. Circuit)"
+      style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: size === 'lg' ? 12 : 10.5, fontFamily: "'IBM Plex Mono', monospace", letterSpacing: '0.04em', color: '#7c2d2d', background: '#f6e9e6', border: '1px solid #e0bdb8', borderRadius: 3, padding: size === 'lg' ? '3px 9px' : '2px 7px', verticalAlign: 'middle', whiteSpace: 'nowrap' }}>
+      <Gavel size={size === 'lg' ? 13 : 11} /> Bazelon opinion
+    </span>
+  );
+}
+
 function BuryButton({ buried, onClick, label = 'Bury' }) {
   return (
     <button onClick={onClick} style={{ ...btnGhost, color: buried ? '#34602f' : '#7c2d2d', borderColor: buried ? '#cde0c6' : '#e0bdb8', background: buried ? '#e2ecde' : 'transparent' }}
